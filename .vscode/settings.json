@@ -1,0 +1,11 @@
+{
+    "sqltools.connections": [
+        {
+            "previewLimit": 50,
+            "server": "localhost",
+            "driver": "PostgreSQL",
+            "name": "hoozin",
+            "connectString": "postgres://xklkvzje:Kx5UmutweqMmlwQYuPDRCWQ16JNhkXJp@dumbo.db.elephantsql.com/xklkvzje"
+        }
+    ]
+}
