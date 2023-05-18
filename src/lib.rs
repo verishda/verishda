@@ -1,15 +1,27 @@
-use anyhow::Result;
+use anyhow::{anyhow, Result};
 use spin_sdk::{
     http::{Request, Response, Router, Params},
     http_component
 };
 
+struct AuthInfo;
+
 mod site;
+mod oidc;
 
 /// A simple Spin HTTP component.
 #[http_component]
 fn handle_hoozin_server(req: Request) -> Result<Response> {
     println!("{:?}", req.headers());
+
+    let auth_info = if let Some(a) = check_authorization(&req)? {
+        a
+    } else {
+        return Ok(http::Response::builder()
+            .status(401)
+            .body(None)?
+        );
+    };
 
     let mut router = Router::new();
     router.get("/api/sites", handle_get_sites);
@@ -71,6 +83,30 @@ fn handle_get_sites(_req: Request, _params: Params) -> Result<Response> {
         .body(Some(json_bytes.into()))?
     )
 }
+
+fn check_authorization(req: &Request) -> Result<Option<AuthInfo>> {
+    let mut ox = oidc::OidcExtension::default();
+    ox.init()?;
+    let auth_token = match extract_auth_token(req) {
+        Some(auth_token) => auth_token,
+        None => return Ok(None)
+    };
+    ox.check_auth_header(&auth_token);
+    Ok(None)
+}
+
+fn extract_auth_token(req: &Request) -> Option<String> {
+    let auth_header = req.headers()
+    .get("Authorization");
+    let auth_header = match auth_header {
+        Some(h) => String::from_utf8(h.as_bytes().into()).unwrap(),
+        None => return None
+    };
+
+    auth_header.strip_prefix("bearer")
+    .map(|h|String::from(h))
+}
+
 
 fn status400(msg: &str) -> Result<Response> {
     Ok(http::Response::builder()

@@ -8,7 +8,7 @@ version = "0.1.0"
 [[component]]
 id = "hoozin-server"
 source = "target/wasm32-wasi/release/hoozin_server.wasm"
-allowed_http_hosts = []
+allowed_http_hosts = ["lemur-5.cloud-iam.com"]
 environment = { PG_ADDRESS = "postgres://xklkvzje:Kx5UmutweqMmlwQYuPDRCWQ16JNhkXJp@dumbo.db.elephantsql.com/xklkvzje" }
 [component.trigger]
 route = "/..."
