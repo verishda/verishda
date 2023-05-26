@@ -10,7 +10,7 @@ crate-type = [ "cdylib" ]
 
 [dependencies]
 # Useful crate to handle errors.
-anyhow = "1"
+anyhow = {version="1", features=["backtrace"]}
 thiserror = "1.0.40"
 # Crate to simplify working with bytes.
 bytes = "1"
@@ -24,5 +24,6 @@ wit-bindgen-rust = { git = "https://github.com/bytecodealliance/wit-bindgen", re
 serde = {version="1.0.160", features=["derive"]}
 serde_json = "1.0.96"
 openidconnect = {version="3.0.0", default-features = false}
+jwt-simple = "0.11"
 
 [workspace]

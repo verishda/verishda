@@ -85,14 +85,19 @@ fn handle_get_sites(_req: Request, _params: Params) -> Result<Response> {
 }
 
 fn check_authorization(req: &Request) -> Result<Option<AuthInfo>> {
+println!("A");
     let mut ox = oidc::OidcExtension::default();
     ox.init()?;
+println!("B");
     let auth_token = match extract_auth_token(req) {
         Some(auth_token) => auth_token,
         None => return Ok(None)
     };
-    ox.check_auth_header(&auth_token);
-    Ok(None)
+println!("C");
+    match ox.check_auth_token(&auth_token) {
+        Ok(_) => Ok(Some(AuthInfo{})),
+        Err(e) => Err(e)
+    }
 }
 
 fn extract_auth_token(req: &Request) -> Option<String> {
@@ -103,7 +108,8 @@ fn extract_auth_token(req: &Request) -> Option<String> {
         None => return None
     };
 
-    auth_header.strip_prefix("bearer")
+    auth_header.strip_prefix("Bearer ")
+    .map(|h|h.trim())
     .map(|h|String::from(h))
 }
 

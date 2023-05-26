@@ -2,6 +2,8 @@
 mod client_impl;
 
 use anyhow::{anyhow, Result};
+use jwt_simple::prelude::*;
+use serde::Deserialize;
 
 const ISSUER: &str = "https://lemur-5.cloud-iam.com/auth/realms/werischda";
 
@@ -16,14 +18,14 @@ use openidconnect::{
     IssuerUrl,
     PkceCodeChallenge,
     RedirectUrl,
-    Scope, url, IdToken,
+    Scope, url, IdToken, JsonWebKey, JsonWebKeyId,
 };
 use openidconnect::core::{
   CoreAuthenticationFlow,
   CoreClient,
   CoreProviderMetadata,
   CoreResponseType,
-  CoreUserInfoClaims,
+  CoreUserInfoClaims, CoreJsonWebKeyUse, CoreJwsSigningAlgorithm,
 };
 
 
@@ -81,15 +83,44 @@ println!("5");
         Ok(())
     }
 
-    pub fn check_auth_header(&self, auth_token: &str) -> Result<()> {
-        let token = auth_token
-            .to_ascii_lowercase()
-            .strip_prefix("bearer ")
-            .ok_or(anyhow!("Bearer "))?
-            ;
+    pub fn check_auth_token(&self, token_str: &str) -> Result<()> {
 
-        // FIXME: temporarily permanently unauthorized ;-)
-        Err(anyhow!("unauthorized, always, for now."))
 
+println!("b: {}", token_str);
+        let token_metadata = Token::decode_metadata(token_str)?;
+println!("c");
+        let config = self.config.as_ref().unwrap();
+        let supported_algos = config.provider_metadata.id_token_signing_alg_values_supported();
+//        let token_algo = serde_json::from_str::<CoreJwsSigningAlgorithm>(token_metadata.algorithm())?;
+let token_algo = CoreJwsSigningAlgorithm::deserialize(serde_json::to_value(token_metadata.algorithm())?)?;
+println!("d");
+        if !supported_algos.contains(&token_algo) || token_algo == CoreJwsSigningAlgorithm::None {
+            return Err(anyhow!("token algorithm {:?} not supported", token_algo));
+        }
+println!("e");
+        let token_key_id = token_metadata.key_id().ok_or(anyhow!("token contains no key_id"))?;
+println!("f");
+        
+        let key = config.provider_metadata.jwks().keys().iter()
+            .filter(|k|k.key_use() == Some(&CoreJsonWebKeyUse::Signature))
+            .filter(|k|k.key_id() == Some(&JsonWebKeyId::new(String::from(token_key_id))))
+            .next()
+            .ok_or(anyhow!("no matching key found"))?;
+
+
+println!("e");
+        let token_message_signature = token_str
+        .rsplit_once('.')
+        .ok_or(anyhow!("signature component not found"))?;
+        let token_signature = Base64UrlSafeNoPadding::decode_to_vec(token_message_signature.1, None)?;
+
+println!("f");
+
+        let (token_message, token_signature) = (token_message_signature.0, &token_signature);
+        
+        key.verify_signature(&token_algo, token_message.as_bytes(), token_signature)?;
+
+        Ok(())
     }
 }
+
