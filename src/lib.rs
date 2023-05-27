@@ -87,7 +87,8 @@ fn handle_get_sites(_req: Request, _params: Params) -> Result<Response> {
 fn check_authorization(req: &Request) -> Result<Option<AuthInfo>> {
 println!("A");
     let mut ox = oidc::OidcExtension::default();
-    ox.init()?;
+    let issuer_url = std::env::var("ISSUER_URL").or(Err(anyhow!("ISSUER_URL not defined. Use a URL that can serve as a base URL for OIDC discovery")))?;
+    ox.init(&issuer_url)?;
 println!("B");
     let auth_token = match extract_auth_token(req) {
         Some(auth_token) => auth_token,
