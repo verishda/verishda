@@ -25,6 +25,7 @@ fn handle_hoozin_server(req: Request) -> Result<Response> {
 
     let mut router = Router::new();
     router.get("/api/sites", handle_get_sites);
+    router.get("/api/sites/:siteId/presence", handle_get_sites_siteid_presence);
     router.post("/api/sites/:siteId/hello", handle_post_sites_siteid_hello);
     router.any("/*", |_,_|Ok(http::Response::builder()
             .status(404)
@@ -45,6 +46,19 @@ fn filter_first_query_param<'a>(param_name: &str, query: &'a str) -> Option<&'a 
     .next()
 }
 
+fn handle_get_sites_siteid_presence(req: Request, params: Params) -> Result<Response> {
+    let site_id = match params.get("siteId") {
+        Some(site_id) => site_id,
+        None => return status400("siteId parameter not given"),
+    };
+    let presences = site::get_presence_on_site(site_id)?;
+    let json_bytes = serde_json::ser::to_vec_pretty(&presences)?;
+    Ok(http::Response::builder()
+        .status(200)
+        .body(Some(json_bytes.into()))?
+    )
+}
+
 fn handle_post_sites_siteid_hello(req: Request, params: Params) -> Result<Response> {
     if !req.method().as_str().eq("POST") {
         return Ok(http::Response::builder()
@@ -53,12 +67,8 @@ fn handle_post_sites_siteid_hello(req: Request, params: Params) -> Result<Respon
         );
     }
     let user_id = "affe32";
-    let site_id = if let Some(site_id_str) = params.get("siteId") {
-        if let Ok(i) = i32::from_str_radix(site_id_str, 10) {
-            i
-        } else {
-            return status400("siteId parameter must be integer")
-        }
+    let site_id = if let Some(site_id) = params.get("siteId") {
+        site_id
     } else {
         return status400("no site specified".into())
     };
