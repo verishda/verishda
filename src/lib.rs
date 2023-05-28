@@ -1,17 +1,22 @@
 use anyhow::{anyhow, Result};
+use http::Extensions;
 use spin_sdk::{
     http::{Request, Response, Router, Params},
     http_component
 };
 
-struct AuthInfo;
+struct AuthInfo {
+    subject: String,
+    given_name: Option<String>,
+    family_name: Option<String>,
+}
 
 mod site;
 mod oidc;
 
 /// A simple Spin HTTP component.
 #[http_component]
-fn handle_hoozin_server(req: Request) -> Result<Response> {
+fn handle_hoozin_server(mut req: Request) -> Result<Response> {
     println!("{:?}", req.headers());
 
     let auth_info = if let Some(a) = check_authorization(&req)? {
@@ -22,6 +27,8 @@ fn handle_hoozin_server(req: Request) -> Result<Response> {
             .body(None)?
         );
     };
+
+    req.extensions_mut().insert(auth_info);
 
     let mut router = Router::new();
     router.get("/api/sites", handle_get_sites);
@@ -66,14 +73,22 @@ fn handle_post_sites_siteid_hello(req: Request, params: Params) -> Result<Respon
             .body(None)?
         );
     }
-    let user_id = "affe32";
+    let auth_info = req.extensions().get::<AuthInfo>().unwrap();
+
     let site_id = if let Some(site_id) = params.get("siteId") {
         site_id
     } else {
         return status400("no site specified".into())
     };
 
-    let status = match site::hello_site(&user_id, site_id) {
+    let logged_as_name = auth_info.given_name
+    .iter()
+    .chain(auth_info.family_name.iter())
+    .fold(String::new(), |a,s| a + " " + s.as_str())
+    ;
+    let logged_as_name = logged_as_name.trim();
+    
+    let status = match site::hello_site(&auth_info.subject, &logged_as_name, site_id) {
         Ok(_) => 200,
         Err(_) => 400
     };
@@ -106,7 +121,7 @@ println!("B");
     };
 println!("C");
     match ox.check_auth_token(&auth_token) {
-        Ok(_) => Ok(Some(AuthInfo{})),
+        Ok(auth_info) => Ok(Some(auth_info)),
         Err(e) => Err(e)
     }
 }

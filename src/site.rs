@@ -41,14 +41,14 @@ fn pg_address() -> Result<String> {
     Ok(std::env::var("PG_ADDRESS")?)
 }
 
-pub(super) fn hello_site(user_id: &str, site_id: &str) -> Result<()>{
+pub(super) fn hello_site(user_id: &str, logged_as_name: &str, site_id: &str) -> Result<()>{
     let stmt = String::new() +
     "INSERT INTO logged_into_site (user_id, logged_as_name, site_id, last_seen) VALUES ($1, $2, $3, now()) ON CONFLICT (user_id) 
     DO UPDATE SET logged_as_name=$2, site_id=$3, last_seen=now()";
 
     let params = [
         ParameterValue::Str(user_id),
-        ParameterValue::Str("unknown"),
+        ParameterValue::Str(logged_as_name),
         ParameterValue::Str(site_id),
     ];
     pg::execute(&pg_address()?, &stmt, &params).unwrap();

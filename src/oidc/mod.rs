@@ -20,6 +20,8 @@ use openidconnect::core::{
   CoreIdToken,
 };
 
+use crate::AuthInfo;
+
 
 #[derive(Default)]
 pub struct OidcExtension {
@@ -68,13 +70,21 @@ println!("5");
         Ok(())
     }
 
-    pub fn check_auth_token(&self, token_str: &str) -> Result<()> {
+    pub(crate) fn check_auth_token(&self, token_str: &str) -> Result<AuthInfo> {
 
         // at this point we assume the access token is a JWT (like Keycloak and probably other IDPs encode their access tokens)
         let token = CoreIdToken::from_str(token_str)?;
         let config = &self.config.as_ref().unwrap();
         let claims = token.claims(&config.client.id_token_verifier(), WaveNonceVerifier{})?;
-        Ok(())
+        Ok(AuthInfo{
+            subject: claims.subject().to_string(),
+            given_name: claims.given_name()
+            .and_then(|lc|lc.get(None))
+            .map(|n|n.to_string()),
+            family_name: claims.family_name()
+            .and_then(|lc|lc.get(None))
+            .map(|n|n.to_string()),
+        })
     }
 }
 
