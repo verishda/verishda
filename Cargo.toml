@@ -1,6 +1,6 @@
 [package]
 name = "hoozin-server"
-authors = ["Pachler, Uwe <uwe.pachler@datagroup.de>"]
+authors = ["Pachler, Uwe <uwe.pachler@gmail.com>"]
 description = ""
 version = "0.1.0"
 edition = "2021"
