@@ -1,5 +1,5 @@
 spin_manifest_version = "1"
-authors = ["Pachler, Uwe <uwe.pachler@datagroup.de>"]
+authors = ["Pachler, Uwe <uwe.pachler@gmail.com>"]
 description = ""
 name = "hoozin-server"
 trigger = { type = "http", base = "/api" }
