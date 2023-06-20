@@ -89,7 +89,7 @@ fn handle_post_sites_siteid_hello(req: Request, params: Params) -> Result<Respon
     let logged_as_name = logged_as_name.trim();
     
     let status = match site::hello_site(&auth_info.subject, &logged_as_name, site_id) {
-        Ok(_) => 200,
+        Ok(_) => 204,
         Err(_) => 400
     };
 
