@@ -53,11 +53,15 @@ fn filter_first_query_param<'a>(param_name: &str, query: &'a str) -> Option<&'a 
     .next()
 }
 
+fn extract_site_param(params: &Params) -> Result<&str> {
+    match params.get("siteId") {
+        Some(site_id) => Ok(site_id),
+        None => Err(anyhow!("siteId parameter not given")),
+    }
+}
+
 fn handle_get_sites_siteid_presence(req: Request, params: Params) -> Result<Response> {
-    let site_id = match params.get("siteId") {
-        Some(site_id) => site_id,
-        None => return status400("siteId parameter not given"),
-    };
+    let site_id = extract_site_param(&params)?;
     let presences = site::get_presence_on_site(site_id)?;
     let json_bytes = serde_json::ser::to_vec_pretty(&presences)?;
     Ok(http::Response::builder()
@@ -75,11 +79,7 @@ fn handle_post_sites_siteid_hello(req: Request, params: Params) -> Result<Respon
     }
     let auth_info = req.extensions().get::<AuthInfo>().unwrap();
 
-    let site_id = if let Some(site_id) = params.get("siteId") {
-        site_id
-    } else {
-        return status400("no site specified".into())
-    };
+    let site_id = extract_site_param(&params)?;
 
     let logged_as_name = auth_info.given_name
     .iter()
@@ -88,14 +88,13 @@ fn handle_post_sites_siteid_hello(req: Request, params: Params) -> Result<Respon
     ;
     let logged_as_name = logged_as_name.trim();
     
-    let status = match site::hello_site(&auth_info.subject, &logged_as_name, site_id) {
-        Ok(_) => 204,
-        Err(_) => 400
-    };
+    if let Err(e) = site::hello_site(&auth_info.subject, &logged_as_name, site_id) {
+        return status400(&e.to_string())
+    }
 
-    Ok(http::Response::builder()
-        .status(status).body(None)?
-    )
+    // to return the current presences, proceed like with an ordinary
+    // presence request
+    return handle_get_sites_siteid_presence(req, params)
 
 }
 
