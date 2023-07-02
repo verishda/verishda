@@ -75,7 +75,7 @@ println!("5");
         // at this point we assume the access token is a JWT (like Keycloak and probably other IDPs encode their access tokens)
         let token = CoreIdToken::from_str(token_str)?;
         let config = &self.config.as_ref().unwrap();
-        let claims = token.claims(&config.client.id_token_verifier(), WaveNonceVerifier{})?;
+        let claims = token.claims(&config.client.id_token_verifier(), WaiveNonceVerifier{})?;
         Ok(AuthInfo{
             subject: claims.subject().to_string(),
             given_name: claims.given_name()
@@ -88,9 +88,9 @@ println!("5");
     }
 }
 
-struct WaveNonceVerifier{}
+struct WaiveNonceVerifier{}
 
-impl NonceVerifier for WaveNonceVerifier {
+impl NonceVerifier for WaiveNonceVerifier {
     fn verify(self, nonce: Option<&Nonce>) -> std::result::Result<(), String> {
         Ok(())
     }
