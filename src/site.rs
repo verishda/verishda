@@ -1,6 +1,6 @@
 use anyhow::Result;
 use serde::{Serialize};
-use spin_sdk::pg::{ParameterValue, Decode, self};
+use spin_sdk::{pg::{ParameterValue, Decode, self}, config};
 
 #[derive(Serialize)]
 pub(super) struct Site {
@@ -38,7 +38,7 @@ pub(super) fn get_sites() -> Result<Vec<Site>> {
 
 
 fn pg_address() -> Result<String> {
-    Ok(std::env::var("PG_ADDRESS")?)
+    Ok(config::get("pg_address")?)
 }
 
 pub(super) fn hello_site(user_id: &str, logged_as_name: &str, site_id: &str) -> Result<()>{

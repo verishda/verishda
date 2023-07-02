@@ -2,7 +2,7 @@ use anyhow::{anyhow, Result};
 use http::Extensions;
 use spin_sdk::{
     http::{Request, Response, Router, Params},
-    http_component
+    http_component, config
 };
 
 struct AuthInfo {
@@ -111,7 +111,7 @@ fn handle_get_sites(_req: Request, _params: Params) -> Result<Response> {
 fn check_authorization(req: &Request) -> Result<Option<AuthInfo>> {
 println!("A");
     let mut ox = oidc::OidcExtension::default();
-    let issuer_url = std::env::var("ISSUER_URL").or(Err(anyhow!("ISSUER_URL not defined. Use a URL that can serve as a base URL for OIDC discovery")))?;
+    let issuer_url = config::get("issuer_url").or(Err(anyhow!("issuer_url not defined. Use a URL that can serve as a base URL for OIDC discovery")))?;
     ox.init(&issuer_url)?;
 println!("B");
     let auth_token = match extract_auth_token(req) {

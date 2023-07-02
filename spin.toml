@@ -5,12 +5,19 @@ name = "verishda-server"
 trigger = { type = "http", base = "/api" }
 version = "0.1.0"
 
+[variables]
+pg_address = { required=true }
+issuer_url = { required=true }
+
 [[component]]
 id = "verishda-server"
 source = "target/wasm32-wasi/release/hoozin_server.wasm"
 allowed_http_hosts = ["lemur-5.cloud-iam.com", "localhost:8080"]
-environment = { PG_ADDRESS = "postgres://xklkvzje:Kx5UmutweqMmlwQYuPDRCWQ16JNhkXJp@dumbo.db.elephantsql.com/xklkvzje", ISSUER_URL = "https://lemur-5.cloud-iam.com/auth/realms/werischda" }
-#environment = { PG_ADDRESS = "postgres://postgres:k512mx3q@localhost:5432/postgres", ISSUER_URL = "http://localhost:8080/realms/werischda" }
+
+[component.config]
+pg_address = "{{ pg_address }}"
+issuer_url = "{{ issuer_url }}"
+
 
 [component.trigger]
 route = "/..."
