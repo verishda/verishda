@@ -121,7 +121,7 @@ println!("B");
 println!("C");
     match ox.check_auth_token(&auth_token) {
         Ok(auth_info) => Ok(Some(auth_info)),
-        Err(e) => Err(e)
+        Err(e) => Ok(None)
     }
 }
 
