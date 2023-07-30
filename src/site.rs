@@ -1,6 +1,7 @@
 use anyhow::Result;
-use serde::{Serialize};
+use serde::{Serialize, Deserialize};
 use spin_sdk::{pg::{ParameterValue, Decode, self}, config};
+use chrono::NaiveDate;
 
 #[derive(Serialize)]
 pub(super) struct Site {
@@ -14,6 +15,12 @@ pub(super) struct Site {
 pub(super) struct Presence {
     pub logged_as_name: String,
 //    pub last_seen: i64,
+}
+
+#[derive(Deserialize)]
+pub(super) struct PresenceAnnouncement {
+    date: NaiveDate,
+    site_id: String,
 }
 
 
@@ -73,4 +80,36 @@ pub(super) fn get_presence_on_site(site_id: &str) -> Result<Vec<Presence>> {
     ;
     
     Ok(presences)
+}
+
+pub(super) fn announce_presence_on_site(user_id: &str, announcements: &[PresenceAnnouncement]) -> Result<()> {
+
+    let mut announcements_str = String::from("ARRAY [");
+    if !announcements.is_empty() {
+        announcements_str += announcements.iter()
+            .map(|a|{
+                let sql_date = a.date.format("%Y/%m/%d").to_string();
+                format!("ROW('{}','{}')::announcement_t", a.site_id, sql_date)
+            })
+            .collect::<Vec<_>>()
+            .join(", ")
+            .as_str()
+            ;
+    }
+    announcements_str += "]";
+
+    let params = [];
+    let stmt = format!(
+        "INSERT INTO user_announcements (user_id, announcements) VALUES ('{0}', {1}) ON CONFLICT (user_id) 
+        DO UPDATE SET announcements={1}",
+        user_id,
+        announcements_str
+    );
+
+    println!("stmt: {}", stmt);
+
+    pg::execute(&pg_address()?, &stmt, &params).unwrap();
+
+    Ok(())
+
 }

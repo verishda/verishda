@@ -1,5 +1,6 @@
 use anyhow::{anyhow, Result};
 use http::Extensions;
+use site::PresenceAnnouncement;
 use spin_sdk::{
     http::{Request, Response, Router, Params},
     http_component, config
@@ -34,6 +35,7 @@ fn handle_hoozin_server(mut req: Request) -> Result<Response> {
     router.get("/api/sites", handle_get_sites);
     router.get("/api/sites/:siteId/presence", handle_get_sites_siteid_presence);
     router.post("/api/sites/:siteId/hello", handle_post_sites_siteid_hello);
+    router.put("/api/announce", handle_put_announce);
     router.any("/*", |_,_|Ok(http::Response::builder()
             .status(404)
             .header("foo", "bar")
@@ -70,14 +72,32 @@ fn handle_get_sites_siteid_presence(req: Request, params: Params) -> Result<Resp
     )
 }
 
+fn check_http_methods(req: &Request, methods: &[&str]) -> Result<(), Response> {
+    for method in methods {
+        if *method == req.method().as_str() {
+            return Ok(());
+        }
+    }
+    let msg = format!("given http method not allowed. Allowed methods: {:?}", methods);
+    let res = http::Response::builder()
+    .status(405)
+    .body(Some(msg.into()))
+    .unwrap();
+    return Err(res);
+}
+
+fn extract_auth_info(req: &Request) -> Result<&AuthInfo> {
+    req.extensions().get::<AuthInfo>().ok_or(anyhow!("failed to extract authentication info from request"))
+}
+
 fn handle_post_sites_siteid_hello(req: Request, params: Params) -> Result<Response> {
     if !req.method().as_str().eq("POST") {
         return Ok(http::Response::builder()
-            .status(504)
+            .status(405)
             .body(None)?
         );
     }
-    let auth_info = req.extensions().get::<AuthInfo>().unwrap();
+    let auth_info = extract_auth_info(&req)?;
 
     let site_id = extract_site_param(&params)?;
 
@@ -98,6 +118,25 @@ fn handle_post_sites_siteid_hello(req: Request, params: Params) -> Result<Respon
 
 }
 
+fn handle_put_announce(req: Request, params: Params) -> Result<Response> {
+    if let Err(r) = check_http_methods(&req, &["PUT"]) {
+        return Ok(r);
+    }
+
+    let bytes = req.body().as_ref().ok_or(anyhow!("no request body"))?;
+    let announcements_str = String::from_utf8(bytes.to_vec())?;
+    let announcements = serde_json::from_str::<Vec<PresenceAnnouncement>>(announcements_str.as_str())?;
+
+    let auth_info = extract_auth_info(&req)?;
+
+    site::announce_presence_on_site(&auth_info.subject, &announcements)?;
+
+    let res = http::Response::builder()
+    .status(200)
+    .body(None)
+    .unwrap();
+    Ok(res)
+}
 
 fn handle_get_sites(_req: Request, _params: Params) -> Result<Response> {
     let sites = site::get_sites()?;
@@ -121,7 +160,10 @@ println!("B");
 println!("C");
     match ox.check_auth_token(&auth_token) {
         Ok(auth_info) => Ok(Some(auth_info)),
-        Err(e) => Ok(None)
+        Err(e) => {
+            println!("auth error: {}", e.to_string());
+            Ok(None)
+        }
     }
 }
 

@@ -14,3 +14,14 @@ CREATE TABLE logged_into_site (
     last_seen timestamp,
     PRIMARY KEY(user_id)
 );
+
+CREATE TYPE announcement_t AS (
+    site_id CHAR(36) , 
+    present_on DATE
+);
+
+CREATE TABLE user_announcements (
+    user_id CHAR(36),
+    announcements announcement_t ARRAY,
+    PRIMARY KEY(user_id)
+);

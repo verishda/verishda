@@ -9,6 +9,8 @@ edition = "2021"
 crate-type = [ "cdylib" ]
 
 [dependencies]
+# date and time
+chrono = " 0.4.26"
 # Useful crate to handle errors.
 anyhow = {version="1", features=["backtrace"]}
 thiserror = "1.0.40"
