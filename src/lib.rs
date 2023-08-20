@@ -1,12 +1,13 @@
 use std::{cell::OnceCell, default};
 
 use anyhow::{anyhow, Result};
-use http::Extensions;
+use http::{Extensions, HeaderValue};
 use site::PresenceAnnouncement;
 use spin_sdk::{
     http::{Request, Response, Router, Params},
     http_component, config
 };
+use mime_guess::Mime;
 
 const swagger_spec: OnceCell<swagger_ui::Spec> = OnceCell::new();
 const swagger_config: OnceCell<swagger_ui::Config> = OnceCell::new();
@@ -99,11 +100,14 @@ fn handle_get_swagger_ui(_req: Request, params: Params) -> Result<Response>{
 
     let path = params.get("path").unwrap();
 
-    println!("path: {path}");
     let resp = match swagger_ui::Assets::get(path) {
-        Some(data) => http::Response::builder()
+        Some(data) => {
+            let mime = mime_guess::from_path(path).first_or_octet_stream();
+            http::Response::builder()
             .status(200)
-            .body(Some(bytes::Bytes::copy_from_slice(data.as_ref())))?,
+            .header("Content-Type", mime.to_string())
+            .body(Some(bytes::Bytes::copy_from_slice(data.as_ref())))?
+        },
         None => http::Response::builder()
             .status(404)
             .body(Some(bytes::Bytes::from("404 Not Found".as_bytes())))?
