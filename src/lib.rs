@@ -1,16 +1,14 @@
-use std::{cell::OnceCell, default};
+use std::cell::OnceCell;
 
 use anyhow::{anyhow, Result};
-use http::{Extensions, HeaderValue};
 use site::PresenceAnnouncement;
 use spin_sdk::{
     http::{Request, Response, Router, Params},
     http_component, config
 };
-use mime_guess::Mime;
 
-const swagger_spec: OnceCell<swagger_ui::Spec> = OnceCell::new();
-const swagger_config: OnceCell<swagger_ui::Config> = OnceCell::new();
+
+const SWAGGER_SPEC: OnceCell<swagger_ui::Spec> = OnceCell::new();
 
 struct AuthInfo {
     subject: String,
@@ -68,6 +66,7 @@ fn handle_hoozin_server(mut req: Request) -> Result<Response> {
     router.handle(req)
 }
 
+#[allow(dead_code)] // we allow this until it is decided we don't need to filter for query params
 fn filter_first_query_param<'a>(param_name: &str, query: &'a str) -> Option<&'a str> {
     query.split("&")
     .filter(|s|s.contains("="))
@@ -75,7 +74,7 @@ fn filter_first_query_param<'a>(param_name: &str, query: &'a str) -> Option<&'a 
         let mut sp = s.split("=");
         (sp.next().unwrap(), sp.next().unwrap())
     })
-    .filter(|pair|pair.0.eq("site_id"))
+    .filter(|pair|pair.0.eq(param_name))
     .map(|pair|pair.1)
     .next()
 }
@@ -90,7 +89,7 @@ fn extract_site_param(params: &Params) -> Result<&str> {
 fn handle_get_swagger_spec(_req: Request, _params: Params) -> Result<Response> {
     let resp = http::Response::builder()
     .status(200)
-    .body(Some(bytes::Bytes::copy_from_slice(swagger_spec.get_or_init(||swagger_ui::swagger_spec_file!("./verishda.yaml")).content)))
+    .body(Some(bytes::Bytes::copy_from_slice(SWAGGER_SPEC.get_or_init(||swagger_ui::swagger_spec_file!("./verishda.yaml")).content)))
     ?;
 
     Ok(resp)
@@ -116,7 +115,7 @@ fn handle_get_swagger_ui(_req: Request, params: Params) -> Result<Response>{
     Ok(resp)
 }
 
-fn handle_get_sites_siteid_presence(req: Request, params: Params) -> Result<Response> {
+fn handle_get_sites_siteid_presence(_req: Request, params: Params) -> Result<Response> {
     let site_id = extract_site_param(&params)?;
     let presences = site::get_presence_on_site(site_id)?;
     let json_bytes = serde_json::ser::to_vec_pretty(&presences)?;
@@ -172,7 +171,7 @@ fn handle_post_sites_siteid_hello(req: Request, params: Params) -> Result<Respon
 
 }
 
-fn handle_put_announce(req: Request, params: Params) -> Result<Response> {
+fn handle_put_announce(req: Request, _params: Params) -> Result<Response> {
     if let Err(r) = check_http_methods(&req, &["PUT"]) {
         return Ok(r);
     }

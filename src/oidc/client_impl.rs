@@ -1,5 +1,3 @@
-use std::{fmt::Display, sync::{Arc, Mutex}};
-
 use anyhow::Result;
 use ::http::uri::InvalidUri;
 use thiserror::Error;

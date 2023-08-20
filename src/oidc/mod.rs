@@ -29,7 +29,7 @@ pub struct OidcExtension {
 }
 
 struct OidcConfig {
-    provider_metadata: CoreProviderMetadata,
+    _provider_metadata: CoreProviderMetadata,
     client: CoreClient,
 }
 
@@ -47,7 +47,6 @@ println!("3");
             let provider_metadata = match provider_metadata_result {
                 Ok(m) => m,
                 Err(e) => return {
-                    let s = e.to_string();
                     Err(anyhow::Error::from(e))
                 }
             };
@@ -65,7 +64,7 @@ println!("4");
             .set_redirect_uri(RedirectUrl::new("http://redirect".to_string())?);
 println!("5");
 
-            self.config = Some(OidcConfig { provider_metadata, client });
+            self.config = Some(OidcConfig { _provider_metadata: provider_metadata, client });
         };
         Ok(())
     }
@@ -91,7 +90,7 @@ println!("5");
 struct WaiveNonceVerifier{}
 
 impl NonceVerifier for WaiveNonceVerifier {
-    fn verify(self, nonce: Option<&Nonce>) -> std::result::Result<(), String> {
+    fn verify(self, _nonce: Option<&Nonce>) -> std::result::Result<(), String> {
         Ok(())
     }
 }
