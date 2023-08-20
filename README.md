@@ -29,7 +29,10 @@ The verishda server is configured using [spin Application variables](https://dev
 
 We need the following configuration variables:
 * `pg_address`: the URL to reach the Postgres database. Note that the database must have beein initialized with the `create_tables.sql` script in the root dir. 
-* `issuer_url`: The issuer URL of the OIDC service to use (tested: [Keycloa](https://www.keycloak.org))
+* `issuer_url`: The issuer URL of the OpenID service to use (tested: [Keycloak](https://www.keycloak.org))
+
+In order to use the `swagger-ui` built into the server, you'll need to create a client (for Keycloak, this is described [here](https://www.keycloak.org/docs/latest/server_admin/index.html#_oidc_clients)). In this guide, we'll assume you called the client 'swagger' (but you can call it anything you want). Also make sure that you'll add `<base-url>/api/public/*` as a redirection URL. So if you're running the server on `localhost:3000` for local development with spin, the redirect URL is `http://localhost:3000/api/public/*`.
+In Fermyon Cloud, this could for instance be `https://verishda.fermyon.app:3000/api/public/*`
 
 ### Fermyon Cloud
 To set these variables, you'll need to run shell commands like these:
@@ -54,3 +57,19 @@ SPIN_CONFIG_PG_ADDRESS=...
 # replace '...' with Postgres URL, which must also include the credentials
 SPIN_CONFIG_ISSUER_URL=...
 ```
+
+## Try in Swagger-UI
+
+The server comes with it's own swagger UI. To use it, point your browser to [`http://localhost:3000/api`](http://localhost:3000/api) if you're running locally or e.g. [`https://verishda.fermyon.app/api`](https://verishda.fermyon.app/api). 
+
+* Find the 'Authorize'-Button and click it
+* Enter 'swagger-ui' in the field 'client-id' (or whatever client name you assigned in your OpenID Connect service)
+* Click 'login' - this should direct you to the login screen, where you login
+* You should now see the status dialog, where you can click 'Close'.
+
+All services should be callable now via swagger-ui.
+
+### Troubleshooting Swagger-UI
+
+* When using Keycloak, make sure you are *NOT* using the admin user when accessing the server, because by default that user will come with the wrong audience (`aud` claim), and you'll get HTTP Status `401`.
+* You may also get `401` if you wait too long after login, because swagger does not perform a token refresh, apparently, and access tokens usually expire quickly (typically 5min). So simply log out and back in again.
