@@ -63,7 +63,7 @@ SPIN_CONFIG_ISSUER_URL=...
 The server comes with it's own swagger UI. To use it, point your browser to [`http://localhost:3000/api`](http://localhost:3000/api) if you're running locally or e.g. [`https://verishda.fermyon.app/api`](https://verishda.fermyon.app/api). 
 
 * Find the 'Authorize'-Button and click it
-* Enter 'swagger-ui' in the field 'client-id' (or whatever client name you assigned in your OpenID Connect service)
+* Enter 'swagger' in the field 'client-id' (or whatever client name you assigned in your OpenID Connect service)
 * Click 'login' - this should direct you to the login screen, where you login
 * You should now see the status dialog, where you can click 'Close'.
 
