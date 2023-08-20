@@ -1,3 +1,5 @@
+use std::{cell::OnceCell, default};
+
 use anyhow::{anyhow, Result};
 use http::Extensions;
 use site::PresenceAnnouncement;
@@ -5,6 +7,9 @@ use spin_sdk::{
     http::{Request, Response, Router, Params},
     http_component, config
 };
+
+const swagger_spec: OnceCell<swagger_ui::Spec> = OnceCell::new();
+const swagger_config: OnceCell<swagger_ui::Config> = OnceCell::new();
 
 struct AuthInfo {
     subject: String,
@@ -20,26 +25,45 @@ mod oidc;
 fn handle_hoozin_server(mut req: Request) -> Result<Response> {
     println!("{:?}", req.headers());
 
-    let auth_info = if let Some(a) = check_authorization(&req)? {
-        a
-    } else {
-        return Ok(http::Response::builder()
-            .status(401)
-            .body(None)?
-        );
+    
+    let auth_info = if !req.uri().path().starts_with("/api/public/") && !req.uri().path().eq("/api") {
+        if let Some(auth_info) = check_authorization(&req)? {
+            auth_info
+        } else {
+            return Ok(http::Response::builder()
+                .status(401)
+                .body(None)?
+            );
+        };
     };
 
     req.extensions_mut().insert(auth_info);
 
+    // only the spin-inserted header 'spin-full-url' appears to hold just that
+    // the full URL for the call. We need the scheme and authority sections
+    // to build the redirect url
+    let spin_full_url = req.headers().get("spin-full-url").unwrap().to_owned();
+    let spin_full_url = spin_full_url.to_str().unwrap().to_owned();
+
+    let mut redirect_url = http::Uri::try_from(spin_full_url)?.into_parts();
+    redirect_url.path_and_query = Some(http::uri::PathAndQuery::from_static("/api/public/swagger-ui/oauth2-redirect.html"));
+    let redirect_url = http::Uri::from_parts(redirect_url).unwrap();
+    
+
     let mut router = Router::new();
+
+    let swagger_spec_url = "/api/public/openapi.yaml";
+    let swagger_ui_url = format!("/api/public/swagger-ui/index.html?url={swagger_spec_url}&oauth2RedirectUrl={redirect_url}");
+    router.get(swagger_spec_url, handle_get_swagger_spec);
+    router.get("/api/public/swagger-ui/:path", handle_get_swagger_ui);
     router.get("/api/sites", handle_get_sites);
     router.get("/api/sites/:siteId/presence", handle_get_sites_siteid_presence);
     router.post("/api/sites/:siteId/hello", handle_post_sites_siteid_hello);
     router.put("/api/announce", handle_put_announce);
-    router.any("/*", |_,_|Ok(http::Response::builder()
-            .status(404)
-            .header("foo", "bar")
-            .body(Some("Hello, Fermyon".into()))?));
+    router.any("/api", move |_,_|Ok(http::Response::builder()
+            .status(302)
+            .header("location", swagger_ui_url.clone())
+            .body(None)?));
     router.handle(req)
 }
 
@@ -60,6 +84,32 @@ fn extract_site_param(params: &Params) -> Result<&str> {
         Some(site_id) => Ok(site_id),
         None => Err(anyhow!("siteId parameter not given")),
     }
+}
+
+fn handle_get_swagger_spec(_req: Request, _params: Params) -> Result<Response> {
+    let resp = http::Response::builder()
+    .status(200)
+    .body(Some(bytes::Bytes::copy_from_slice(swagger_spec.get_or_init(||swagger_ui::swagger_spec_file!("./verishda.yaml")).content)))
+    ?;
+
+    Ok(resp)
+}
+
+fn handle_get_swagger_ui(_req: Request, params: Params) -> Result<Response>{
+
+    let path = params.get("path").unwrap();
+
+    println!("path: {path}");
+    let resp = match swagger_ui::Assets::get(path) {
+        Some(data) => http::Response::builder()
+            .status(200)
+            .body(Some(bytes::Bytes::copy_from_slice(data.as_ref())))?,
+        None => http::Response::builder()
+            .status(404)
+            .body(Some(bytes::Bytes::from("404 Not Found".as_bytes())))?
+    };
+
+    Ok(resp)
 }
 
 fn handle_get_sites_siteid_presence(req: Request, params: Params) -> Result<Response> {
