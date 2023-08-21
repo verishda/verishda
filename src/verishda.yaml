@@ -166,7 +166,7 @@ components:
           description: Date for which the user announces their presence
           type: string
           format: localdate
-        site_id:
+        site_ids:
           description: >-
             The site IDs where the user announces their presence.
           type: array

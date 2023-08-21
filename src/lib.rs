@@ -1,6 +1,7 @@
 use std::cell::OnceCell;
 
 use anyhow::{anyhow, Result};
+use mime_guess::mime::APPLICATION_JSON;
 use site::PresenceAnnouncement;
 use spin_sdk::{
     http::{Request, Response, Router, Params},
@@ -10,6 +11,7 @@ use spin_sdk::{
 
 const SWAGGER_SPEC: OnceCell<swagger_ui::Spec> = OnceCell::new();
 
+#[derive(Debug)]
 struct AuthInfo {
     subject: String,
     given_name: Option<String>,
@@ -25,8 +27,8 @@ fn handle_hoozin_server(mut req: Request) -> Result<Response> {
     println!("{:?}", req.headers());
 
     
-    let auth_info = if !req.uri().path().starts_with("/api/public/") && !req.uri().path().eq("/api") {
-        if let Some(auth_info) = check_authorization(&req)? {
+    if !req.uri().path().starts_with("/api/public/") && !req.uri().path().eq("/api") {
+        let auth_info = if let Some(auth_info) = check_authorization(&req)? {
             auth_info
         } else {
             return Ok(http::Response::builder()
@@ -34,9 +36,8 @@ fn handle_hoozin_server(mut req: Request) -> Result<Response> {
                 .body(None)?
             );
         };
+        req.extensions_mut().insert(auth_info);
     };
-
-    req.extensions_mut().insert(auth_info);
 
     // only the spin-inserted header 'spin-full-url' appears to hold just that
     // the full URL for the call. We need the scheme and authority sections
@@ -172,23 +173,19 @@ fn handle_post_sites_siteid_hello(req: Request, params: Params) -> Result<Respon
 }
 
 fn handle_put_announce(req: Request, _params: Params) -> Result<Response> {
-    if let Err(r) = check_http_methods(&req, &["PUT"]) {
-        return Ok(r);
-    }
+    let auth_info = extract_auth_info(&req)?;
 
     let bytes = req.body().as_ref().ok_or(anyhow!("no request body"))?;
     let announcements_str = String::from_utf8(bytes.to_vec())?;
     let announcements = serde_json::from_str::<Vec<PresenceAnnouncement>>(announcements_str.as_str())?;
 
-    let auth_info = extract_auth_info(&req)?;
 
     site::announce_presence_on_site(&auth_info.subject, &announcements)?;
 
-    let res = http::Response::builder()
-    .status(200)
-    .body(None)
-    .unwrap();
-    Ok(res)
+    Ok(http::Response::builder()
+        .status(200)
+        .header("Content-Type", APPLICATION_JSON.as_ref())
+        .body(None)?)
 }
 
 fn handle_get_sites(_req: Request, _params: Params) -> Result<Response> {
@@ -196,6 +193,7 @@ fn handle_get_sites(_req: Request, _params: Params) -> Result<Response> {
     let json_bytes = serde_json::ser::to_vec_pretty(&sites)?;
     Ok(http::Response::builder()
         .status(200)
+        .header("Content-Type", APPLICATION_JSON.as_ref())
         .body(Some(json_bytes.into()))?
     )
 }
@@ -210,8 +208,10 @@ println!("B");
         Some(auth_token) => auth_token,
         None => return Ok(None)
     };
-println!("C");
-    match ox.check_auth_token(&auth_token) {
+
+    let auth_token_opt = ox.check_auth_token(&auth_token);
+println!("C: {auth_token_opt:?}");
+    match auth_token_opt {
         Ok(auth_info) => Ok(Some(auth_info)),
         Err(e) => {
             println!("auth error: {}", e.to_string());

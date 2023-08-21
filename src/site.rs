@@ -20,7 +20,7 @@ pub(super) struct Presence {
 #[derive(Deserialize)]
 pub(super) struct PresenceAnnouncement {
     date: NaiveDate,
-    site_id: String,
+    site_ids: Vec<String>,
 }
 
 
@@ -87,9 +87,12 @@ pub(super) fn announce_presence_on_site(user_id: &str, announcements: &[Presence
     let mut announcements_str = String::from("ARRAY [");
     if !announcements.is_empty() {
         announcements_str += announcements.iter()
-            .map(|a|{
-                let sql_date = a.date.format("%Y/%m/%d").to_string();
-                format!("ROW('{}','{}')::announcement_t", a.site_id, sql_date)
+            .flat_map(|a| a.site_ids.iter().map(|site|(site,a.date)))
+            .map(|p|{
+                let site = p.0;
+                let date = p.1;
+                let sql_date = date.format("%Y/%m/%d").to_string();
+                format!("ROW('{site}','{sql_date}')::announcement_t")
             })
             .collect::<Vec<_>>()
             .join(", ")
