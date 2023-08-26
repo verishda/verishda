@@ -144,6 +144,15 @@ fn extract_auth_info(req: &Request) -> Result<&AuthInfo> {
     req.extensions().get::<AuthInfo>().ok_or(anyhow!("failed to extract authentication info from request"))
 }
 
+fn to_logged_as_name(auth_info: &AuthInfo) -> String {
+    auth_info.given_name
+    .iter()
+    .chain(auth_info.family_name.iter())
+    .fold(String::new(), |a,s| a + " " + s.as_str())
+    .trim()
+    .to_string()
+}
+
 fn handle_post_sites_siteid_hello(req: Request, params: Params) -> Result<Response> {
     if !req.method().as_str().eq("POST") {
         return Ok(http::Response::builder()
@@ -155,13 +164,7 @@ fn handle_post_sites_siteid_hello(req: Request, params: Params) -> Result<Respon
 
     let site_id = extract_site_param(&params)?;
 
-    let logged_as_name = auth_info.given_name
-    .iter()
-    .chain(auth_info.family_name.iter())
-    .fold(String::new(), |a,s| a + " " + s.as_str())
-    ;
-    let logged_as_name = logged_as_name.trim();
-    
+    let logged_as_name = to_logged_as_name(auth_info);
     if let Err(e) = site::hello_site(&auth_info.subject, &logged_as_name, site_id) {
         return status400(&e.to_string())
     }
@@ -180,7 +183,7 @@ fn handle_put_announce(req: Request, _params: Params) -> Result<Response> {
     let announcements = serde_json::from_str::<Vec<PresenceAnnouncement>>(announcements_str.as_str())?;
 
 
-    site::announce_presence_on_site(&auth_info.subject, &announcements)?;
+    site::announce_presence_on_site(&auth_info.subject, &to_logged_as_name(auth_info), &announcements)?;
 
     Ok(http::Response::builder()
         .status(200)

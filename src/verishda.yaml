@@ -132,7 +132,7 @@ components:
       required:
         - logged_as_name
         - currently_present
-        - announcements
+        - announced_dates
       properties:
         logged_as_name:
           type: string
@@ -142,7 +142,7 @@ components:
           description: >-
             Declares whether the named user is currently present. A
             user may not be present, but still have presence announcements.
-        announcements:
+        announced_dates:
           type: array
           items:
             type: string

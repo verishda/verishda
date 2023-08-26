@@ -1,3 +1,5 @@
+use std::panic::UnwindSafe;
+
 use anyhow::Result;
 use serde::{Serialize, Deserialize};
 use spin_sdk::{pg::{ParameterValue, Decode, self}, config};
@@ -14,7 +16,8 @@ pub(super) struct Site {
 #[derive(Serialize)]
 pub(super) struct Presence {
     pub logged_as_name: String,
-//    pub last_seen: i64,
+    pub currently_present: bool,
+    pub announced_dates: Vec<String>,
 }
 
 #[derive(Deserialize)]
@@ -74,7 +77,8 @@ pub(super) fn get_presence_on_site(site_id: &str) -> Result<Vec<Presence>> {
     .rows.iter()
     .map(|r|Presence {
         logged_as_name: String::decode(&r[0]).unwrap(), 
-//        last_seen: i64::decode(&r[1]).unwrap(), 
+        announced_dates: vec![],
+        currently_present: true
     })
     .collect()
     ;
@@ -82,37 +86,61 @@ pub(super) fn get_presence_on_site(site_id: &str) -> Result<Vec<Presence>> {
     Ok(presences)
 }
 
-pub(super) fn announce_presence_on_site(user_id: &str, announcements: &[PresenceAnnouncement]) -> Result<()> {
+fn wrap_in_transaction<F,R>(pg_address: &str, f: F) -> Result<R>
+where F: Fn() -> Result<R> + UnwindSafe
+{
+    pg::execute(pg_address, "BEGIN;", &[]).unwrap();
+    match std::panic::catch_unwind(f) {
+        Ok(f_result) => {
+            match &f_result {
+                &Ok(_) => pg::execute(pg_address, "COMMIT;", &[])?,
+                &Err(_) => pg::execute(pg_address, "ROLLBACK;", &[])?,
+            };
 
-    let mut announcements_str = String::from("ARRAY [");
-    if !announcements.is_empty() {
-        announcements_str += announcements.iter()
-            .flat_map(|a| a.site_ids.iter().map(|site|(site,a.date)))
-            .map(|p|{
-                let site = p.0;
-                let date = p.1;
-                let sql_date = date.format("%Y/%m/%d").to_string();
-                format!("ROW('{site}','{sql_date}')::announcement_t")
-            })
-            .collect::<Vec<_>>()
-            .join(", ")
-            .as_str()
-            ;
+            f_result
+        },
+        Err(panic) => {
+            pg::execute(pg_address, "ROLLBACK;", &[]).unwrap();
+
+            std::panic::resume_unwind(panic)
+        }
     }
-    announcements_str += "]";
 
-    let params = [];
-    let stmt = format!(
-        "INSERT INTO user_announcements (user_id, announcements) VALUES ('{0}', {1}) ON CONFLICT (user_id) 
-        DO UPDATE SET announcements={1}",
-        user_id,
-        announcements_str
-    );
+}
 
-    println!("stmt: {}", stmt);
-
-    pg::execute(&pg_address()?, &stmt, &params).unwrap();
-
+fn update_userinfo(user_id: &str, logged_as_name: &str) -> Result<()> {
+    let stmt = "INSERT INTO user_info (user_id, logged_as_name, last_seen) VALUES ($1, $2, now()) ON CONFLICT (user_id) 
+    DO UPDATE SET logged_as_name=$2, last_seen=now()";
+    pg::execute(&pg_address()?, stmt, &[
+        ParameterValue::Str(user_id),
+        ParameterValue::Str(logged_as_name)
+        ]
+    )?;
     Ok(())
+}
 
+pub(super) fn announce_presence_on_site(user_id: &str, logged_as_name: &str, announcements: &[PresenceAnnouncement]) -> Result<()> {
+
+    wrap_in_transaction(&pg_address()?, move || {
+
+        update_userinfo(user_id, logged_as_name)?;
+
+        pg::execute(&pg_address()?, "DELETE FROM user_announcements WHERE user_id=$1", &[ParameterValue::Str(user_id)])?;
+
+        let site_date_pairs: Vec<(&String, NaiveDate)> = announcements.iter()
+            .flat_map(|a| a.site_ids.iter().map(|site|(site,a.date)))
+            .collect();
+
+        for (site_id, date) in site_date_pairs {
+            let sql_date = date.format("%Y/%m/%d").to_string();
+            
+            let stmt = format!("INSERT INTO user_announcements (user_id, site_id, present_on) VALUES ($1, $2, '{}')", sql_date);
+            pg::execute(&pg_address()?, &stmt, &[
+                ParameterValue::Str(user_id),
+                ParameterValue::Str(site_id)
+            ])?;
+        }
+
+        Ok(())
+    })
 }
