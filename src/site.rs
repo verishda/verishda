@@ -1,8 +1,8 @@
-use std::panic::UnwindSafe;
+use std::{panic::UnwindSafe, collections::HashMap};
 
 use anyhow::Result;
 use serde::{Serialize, Deserialize};
-use spin_sdk::{pg::{ParameterValue, Decode, self}, config};
+use spin_sdk::{pg::{ParameterValue, Decode, self, DbValue}, config};
 use chrono::NaiveDate;
 
 #[derive(Serialize)]
@@ -13,11 +13,11 @@ pub(super) struct Site {
     latitude: f32
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, Default, Clone)]
 pub(super) struct Presence {
     pub logged_as_name: String,
     pub currently_present: bool,
-    pub announced_dates: Vec<String>,
+    pub announced_dates: Vec<NaiveDate>,
 }
 
 #[derive(Deserialize)]
@@ -52,6 +52,9 @@ fn pg_address() -> Result<String> {
 }
 
 pub(super) fn hello_site(user_id: &str, logged_as_name: &str, site_id: &str) -> Result<()>{
+
+    update_userinfo(user_id, logged_as_name)?;
+
     let stmt = String::new() +
     "INSERT INTO logged_into_site (user_id, logged_as_name, site_id, last_seen) VALUES ($1, $2, $3, now()) ON CONFLICT (user_id) 
     DO UPDATE SET logged_as_name=$2, site_id=$3, last_seen=now()";
@@ -68,18 +71,50 @@ pub(super) fn hello_site(user_id: &str, logged_as_name: &str, site_id: &str) -> 
 
 pub(super) fn get_presence_on_site(site_id: &str) -> Result<Vec<Presence>> {
     let stmt = String::new() +
-    "SELECT logged_as_name, last_seen FROM logged_into_site WHERE site_id=$1 AND last_seen >= now() - INTERVAL '10 minutes'";
+    "SELECT u.user_id, u.logged_as_name, to_char(a.present_on, 'YYYY-MM-DD')
+    FROM user_announcements AS a JOIN user_info AS u ON a.user_id=u.user_id 
+    WHERE a.site_id=$1
+    
+    UNION
+    
+    SELECT u.user_id, u.logged_as_name, NULL 
+    FROM logged_into_site AS s JOIN user_info AS u ON s.user_id=u.user_id 
+    WHERE s.site_id=$1 AND u.last_seen >= now() - INTERVAL '10 minutes'";
 
     let row_set = pg::query(&pg_address()?, &stmt, &[
         ParameterValue::Str(site_id),
     ])?;
+
     let presences: Vec<_> = row_set
     .rows.iter()
-    .map(|r|Presence {
-        logged_as_name: String::decode(&r[0]).unwrap(), 
-        announced_dates: vec![],
-        currently_present: true
+    .fold(HashMap::<String,Presence>::new(), |mut m,r|{
+        let user_id = String::decode(&r[0]).unwrap();
+        let present_on = if let DbValue::Str(s) = &r[2] {
+            let date = NaiveDate::parse_from_str(&s, "%Y-%m-%d").unwrap();
+            Some(date)
+        } else {
+            None
+        };
+
+        if !m.contains_key(&user_id) {
+            m.insert(user_id.clone(), Presence {
+                logged_as_name:String::decode(&r[0]).unwrap(), 
+                ..Default::default()}
+            );
+        }
+        let presence = m.get_mut(&user_id).unwrap();
+
+        match present_on {
+            // having a presence announcement date means exactly that: an announcement 
+            Some(date) => presence.announced_dates.push(date),
+            // having none means that user is currently present
+            None => presence.currently_present = true,
+        }
+
+        m
     })
+    .values()
+    .map(|p|p.clone())
     .collect()
     ;
     
