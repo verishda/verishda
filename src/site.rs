@@ -98,7 +98,7 @@ pub(super) fn get_presence_on_site(site_id: &str) -> Result<Vec<Presence>> {
 
         if !m.contains_key(&user_id) {
             m.insert(user_id.clone(), Presence {
-                logged_as_name:String::decode(&r[0]).unwrap(), 
+                logged_as_name:String::decode(&r[1]).unwrap(), 
                 ..Default::default()}
             );
         }
