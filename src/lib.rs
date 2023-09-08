@@ -186,7 +186,7 @@ fn handle_put_announce(req: Request, _params: Params) -> Result<Response> {
     site::announce_presence_on_site(&auth_info.subject, &to_logged_as_name(auth_info), &announcements)?;
 
     Ok(http::Response::builder()
-        .status(200)
+        .status(204)
         .header("Content-Type", APPLICATION_JSON.as_ref())
         .body(None)?)
 }
