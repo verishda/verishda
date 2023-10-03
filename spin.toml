@@ -6,6 +6,7 @@ trigger = { type = "http", base = "/api" }
 version = "0.1.0"
 
 [variables]
+rust_log = { required=false, default='' }
 pg_address = { required=true }
 issuer_url = { required=true }
 
@@ -15,6 +16,7 @@ source = "target/wasm32-wasi/release/hoozin_server.wasm"
 allowed_http_hosts = ["lemur-5.cloud-iam.com", "localhost:8080"]
 
 [component.config]
+rust_log = "{{ rust_log }}"
 pg_address = "{{ pg_address }}"
 issuer_url = "{{ issuer_url }}"
 

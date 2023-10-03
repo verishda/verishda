@@ -7,6 +7,7 @@ use spin_sdk::{
     http::{Request, Response, Router, Params},
     http_component, config
 };
+use log::{info, trace, debug, error};
 
 
 const SWAGGER_SPEC: OnceCell<swagger_ui::Spec> = OnceCell::new();
@@ -21,10 +22,21 @@ struct AuthInfo {
 mod site;
 mod oidc;
 
+fn init_logging() {
+    let rust_log_config = spin_sdk::config::get("rust_log").ok();
+    let mut logger_builder = env_logger::builder();
+    if let Some(rust_log) = rust_log_config {
+        logger_builder.parse_filters(&rust_log);
+    }
+    logger_builder.init();
+}
+
 /// A simple Spin HTTP component.
 #[http_component]
 fn handle_hoozin_server(mut req: Request) -> Result<Response> {
-    println!("{:?}", req.headers());
+    init_logging();
+
+    trace!("inbound request{:?}", req);
 
     
     if !req.uri().path().starts_with("/api/public/") && !req.uri().path().eq("/api") {
@@ -202,22 +214,23 @@ fn handle_get_sites(_req: Request, _params: Params) -> Result<Response> {
 }
 
 fn check_authorization(req: &Request) -> Result<Option<AuthInfo>> {
-println!("A");
+    trace!("checking authorization...");
     let mut ox = oidc::OidcExtension::default();
     let issuer_url = config::get("issuer_url").or(Err(anyhow!("issuer_url not defined. Use a URL that can serve as a base URL for OIDC discovery")))?;
     ox.init(&issuer_url)?;
-println!("B");
+    let auth_token = extract_auth_token(req);
+    trace!("auth_token: {auth_token:?}");
     let auth_token = match extract_auth_token(req) {
         Some(auth_token) => auth_token,
         None => return Ok(None)
     };
 
-    let auth_token_opt = ox.check_auth_token(&auth_token);
-println!("C: {auth_token_opt:?}");
-    match auth_token_opt {
+    let auth_info_opt = ox.check_auth_token(&auth_token);
+    trace!("auth_info {auth_info_opt:?}");
+    match auth_info_opt {
         Ok(auth_info) => Ok(Some(auth_info)),
         Err(e) => {
-            println!("auth error: {}", e.to_string());
+            error!("auth error: {e}");
             Ok(None)
         }
     }

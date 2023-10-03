@@ -22,6 +22,8 @@ use openidconnect::core::{
 
 use crate::AuthInfo;
 
+use log::{trace, error};
+
 
 #[derive(Default)]
 pub struct OidcExtension {
@@ -36,21 +38,22 @@ struct OidcConfig {
 impl OidcExtension {
     pub fn init(&mut self, issuer_url: &str) -> anyhow::Result<()> {
         if self.config.is_none() {
-println!("1");
+            trace!("having no OIDC config, initializing..");
             let issuer_url = IssuerUrl::new(issuer_url.to_string())?;
-println!("2");
+            trace!("acquiring provider metadata via OIDC discovery...");
             let provider_metadata_result = CoreProviderMetadata::discover(
                 &issuer_url,
                 client_impl::exec,
             );
-println!("3");
+            trace!("discovery result received.");
             let provider_metadata = match provider_metadata_result {
                 Ok(m) => m,
-                Err(e) => return {
-                    Err(anyhow::Error::from(e))
+                Err(e) => {
+                    error!("disovery result in error: {e}");
+                    return Err(anyhow::Error::from(e))
                 }
             };
-println!("4");
+            trace!("provider metadata loaded successfully: {provider_metadata:?}");
 
             // Create an OpenID Connect client by specifying the client ID, client secret, authorization URL
             // and token URL.
@@ -62,7 +65,7 @@ println!("4");
             )
             // Set the URL the user will be redirected to after the authorization process.
             .set_redirect_uri(RedirectUrl::new("http://redirect".to_string())?);
-println!("5");
+            trace!("OIDC client created successfully from provider metadata");
 
             self.config = Some(OidcConfig { _provider_metadata: provider_metadata, client });
         };

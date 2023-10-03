@@ -30,6 +30,7 @@ The verishda server is configured using [spin Application variables](https://dev
 We need the following configuration variables:
 * `pg_address`: the URL to reach the Postgres database. Note that the database must have beein initialized with the `create_tables.sql` script in the root dir. 
 * `issuer_url`: The issuer URL of the OpenID service to use (tested: [Keycloak](https://www.keycloak.org))
+* `rust_log`: Optional logging configuration. If provided, contains a string describing the logging settings. See the [`env_logger` create documenation](https://docs.rs/env_logger/latest/env_logger/#enabling-logging) for details.
 
 In order to use the `swagger-ui` built into the server, you'll need to create a client (for Keycloak, this is described [here](https://www.keycloak.org/docs/latest/server_admin/index.html#_oidc_clients)). In this guide, we'll assume you called the client 'swagger' (but you can call it anything you want). Also make sure that you'll add `<base-url>/api/public/*` as a redirection URL. So if you're running the server on `localhost:3000` for local development with spin, the redirect URL is `http://localhost:3000/api/public/*`.
 In Fermyon Cloud, this could for instance be `https://verishda.fermyon.app:3000/api/public/*`
@@ -56,6 +57,10 @@ SPIN_CONFIG_PG_ADDRESS=...
 
 # replace '...' with Postgres URL, which must also include the credentials
 SPIN_CONFIG_ISSUER_URL=...
+
+# if enabled (remove comment), the format for the logging config is defined here:
+# https://docs.rs/env_logger/latest/env_logger/#enabling-logging
+#SPIN_RUST_LOG=...
 ```
 
 ## Try in Swagger-UI
