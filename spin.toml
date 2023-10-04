@@ -14,6 +14,7 @@ issuer_url = { required=true }
 id = "verishda-server"
 source = "target/wasm32-wasi/release/hoozin_server.wasm"
 allowed_http_hosts = ["lemur-5.cloud-iam.com", "localhost:8080"]
+key_value_stores = ["default"]
 
 [component.config]
 rust_log = "{{ rust_log }}"

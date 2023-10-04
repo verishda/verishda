@@ -3,7 +3,7 @@ mod client_impl;
 
 use std::str::FromStr;
 
-use anyhow::{Result};
+use crate::store::Cache;
 
 
 use openidconnect::{
@@ -12,7 +12,7 @@ use openidconnect::{
     Nonce,
     IssuerUrl,
     RedirectUrl,
-    NonceVerifier,
+    NonceVerifier, ProviderMetadata, JsonWebKeySet,
 };
 use openidconnect::core::{
   CoreClient,
@@ -35,25 +35,36 @@ struct OidcConfig {
     client: CoreClient,
 }
 
+
+fn fetch_metadata(issuer_url: &str) -> Result<CoreProviderMetadata, anyhow::Error> {
+    trace!("acquiring provider metadata via OIDC discovery...");
+    let issuer_url = IssuerUrl::new(issuer_url.to_string())?;
+    let provider_metadata_result = CoreProviderMetadata::discover(
+        &issuer_url,
+        client_impl::exec,
+    );
+    trace!("discovery result received.");
+    let provider_metadata = match provider_metadata_result {
+        Ok(m) => m,
+        Err(e) => {
+            error!("disovery result in error: {e}");
+            return Err(anyhow::Error::from(e))
+        }
+    };
+    trace!("provider metadata loaded successfully: {provider_metadata:?}");
+
+    Ok(provider_metadata)
+}
+
 impl OidcExtension {
-    pub fn init(&mut self, issuer_url: &str) -> anyhow::Result<()> {
+    pub fn init(&mut self, mut cache: impl Cache<str, CoreProviderMetadata>, issuer_url: &str) -> anyhow::Result<()> {
         if self.config.is_none() {
             trace!("having no OIDC config, initializing..");
-            let issuer_url = IssuerUrl::new(issuer_url.to_string())?;
-            trace!("acquiring provider metadata via OIDC discovery...");
-            let provider_metadata_result = CoreProviderMetadata::discover(
-                &issuer_url,
-                client_impl::exec,
-            );
-            trace!("discovery result received.");
-            let provider_metadata = match provider_metadata_result {
-                Ok(m) => m,
-                Err(e) => {
-                    error!("disovery result in error: {e}");
-                    return Err(anyhow::Error::from(e))
-                }
-            };
-            trace!("provider metadata loaded successfully: {provider_metadata:?}");
+            let provider_metadata = cache.try_get_or_else("oidc_metadata", |_|{
+                fetch_metadata(issuer_url)
+            })?;
+
+            trace!("OIDC provider metadata: {provider_metadata:?}");
 
             // Create an OpenID Connect client by specifying the client ID, client secret, authorization URL
             // and token URL.
@@ -72,7 +83,7 @@ impl OidcExtension {
         Ok(())
     }
 
-    pub(crate) fn check_auth_token(&self, token_str: &str) -> Result<AuthInfo> {
+    pub(crate) fn check_auth_token(&self, token_str: &str) -> anyhow::Result<AuthInfo> {
 
         // at this point we assume the access token is a JWT (like Keycloak and probably other IDPs encode their access tokens)
         let token = CoreIdToken::from_str(token_str)?;

@@ -9,6 +9,8 @@ use spin_sdk::{
 };
 use log::{info, trace, debug, error};
 
+use crate::{spin_store::SpinStore, oidc_cache::MetadataCache};
+
 
 const SWAGGER_SPEC: OnceCell<swagger_ui::Spec> = OnceCell::new();
 
@@ -21,6 +23,9 @@ struct AuthInfo {
 
 mod site;
 mod oidc;
+mod store;
+mod spin_store;
+mod oidc_cache;
 
 fn init_logging() {
     let rust_log_config = spin_sdk::config::get("rust_log").ok();
@@ -217,7 +222,8 @@ fn check_authorization(req: &Request) -> Result<Option<AuthInfo>> {
     trace!("checking authorization...");
     let mut ox = oidc::OidcExtension::default();
     let issuer_url = config::get("issuer_url").or(Err(anyhow!("issuer_url not defined. Use a URL that can serve as a base URL for OIDC discovery")))?;
-    ox.init(&issuer_url)?;
+    let cache = MetadataCache::new(SpinStore::new(spin_sdk::key_value::Store::open_default()?));
+    ox.init(cache, &issuer_url)?;
     let auth_token = extract_auth_token(req);
     trace!("auth_token: {auth_token:?}");
     let auth_token = match extract_auth_token(req) {
