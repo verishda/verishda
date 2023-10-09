@@ -59,13 +59,15 @@ paths:
         - petstore_auth:
             - write:pets
             - read:pets
-  /api/announce:
+  /api/sites/{siteId}/announce:
     put:
-      summary: 'Announce a future presence(s) for one or more sites'
+      summary: 'Announce a future presence(s) for this sites'
       description: >-
         Announcing presence via this endpoint will replace all previous
-        presence announcements for the current user.
+        presence announcements for this site for the current user.
       operationId: handle_put_announce
+      parameters:
+        - $ref: '#/components/parameters/SitePathParam'
       requestBody:
         content:
           application/json:
@@ -166,12 +168,6 @@ components:
           description: Date for which the user announces their presence
           type: string
           format: localdate
-        site_ids:
-          description: >-
-            The site IDs where the user announces their presence.
-          type: array
-          items:
-            type: string
   securitySchemes:
     petstore_auth:
       type: oauth2

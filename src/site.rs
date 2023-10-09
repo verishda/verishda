@@ -23,7 +23,6 @@ pub(super) struct Presence {
 #[derive(Deserialize)]
 pub(super) struct PresenceAnnouncement {
     date: NaiveDate,
-    site_ids: Vec<String>,
 }
 
 
@@ -154,20 +153,19 @@ fn update_userinfo(user_id: &str, logged_as_name: &str) -> Result<()> {
     Ok(())
 }
 
-pub(super) fn announce_presence_on_site(user_id: &str, logged_as_name: &str, announcements: &[PresenceAnnouncement]) -> Result<()> {
+pub(super) fn announce_presence_on_site(user_id: &str, site_id: &str, logged_as_name: &str, announcements: &[PresenceAnnouncement]) -> Result<()> {
 
     wrap_in_transaction(&pg_address()?, move || {
 
         update_userinfo(user_id, logged_as_name)?;
 
-        pg::execute(&pg_address()?, "DELETE FROM user_announcements WHERE user_id=$1", &[ParameterValue::Str(user_id)])?;
+        pg::execute(&pg_address()?, "DELETE FROM user_announcements WHERE user_id=$1 AND site_id=$2", &[
+            ParameterValue::Str(user_id),
+            ParameterValue::Str(site_id)
+        ])?;
 
-        let site_date_pairs: Vec<(&String, NaiveDate)> = announcements.iter()
-            .flat_map(|a| a.site_ids.iter().map(|site|(site,a.date)))
-            .collect();
-
-        for (site_id, date) in site_date_pairs {
-            let sql_date = date.format("%Y/%m/%d").to_string();
+        for a in announcements {
+            let sql_date = a.date.format("%Y/%m/%d").to_string();
             
             let stmt = format!("INSERT INTO user_announcements (user_id, site_id, present_on) VALUES ($1, $2, '{}')", sql_date);
             pg::execute(&pg_address()?, &stmt, &[

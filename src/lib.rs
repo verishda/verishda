@@ -76,7 +76,7 @@ fn handle_hoozin_server(mut req: Request) -> Result<Response> {
     router.get("/api/sites", handle_get_sites);
     router.get("/api/sites/:siteId/presence", handle_get_sites_siteid_presence);
     router.post("/api/sites/:siteId/hello", handle_post_sites_siteid_hello);
-    router.put("/api/announce", handle_put_announce);
+    router.put("/api/sites/:siteId/announce", handle_put_announce);
     router.any("/api", move |_,_|Ok(http::Response::builder()
             .status(302)
             .header("location", swagger_ui_url.clone())
@@ -192,15 +192,16 @@ fn handle_post_sites_siteid_hello(req: Request, params: Params) -> Result<Respon
 
 }
 
-fn handle_put_announce(req: Request, _params: Params) -> Result<Response> {
+fn handle_put_announce(req: Request, params: Params) -> Result<Response> {
     let auth_info = extract_auth_info(&req)?;
 
     let bytes = req.body().as_ref().ok_or(anyhow!("no request body"))?;
     let announcements_str = String::from_utf8(bytes.to_vec())?;
     let announcements = serde_json::from_str::<Vec<PresenceAnnouncement>>(announcements_str.as_str())?;
 
+    let site_id = extract_site_param(&params)?;
 
-    site::announce_presence_on_site(&auth_info.subject, &to_logged_as_name(auth_info), &announcements)?;
+    site::announce_presence_on_site(&auth_info.subject, site_id, &to_logged_as_name(auth_info), &announcements)?;
 
     Ok(http::Response::builder()
         .status(204)
