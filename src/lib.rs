@@ -7,7 +7,7 @@ use spin_sdk::{
     http::{Request, Response, Router, Params},
     http_component, config
 };
-use log::{info, trace, debug, error};
+use log::{trace, error};
 
 use crate::{spin_store::SpinStore, oidc_cache::MetadataCache};
 

@@ -12,7 +12,7 @@ use openidconnect::{
     Nonce,
     IssuerUrl,
     RedirectUrl,
-    NonceVerifier, ProviderMetadata, JsonWebKeySet,
+    NonceVerifier,
 };
 use openidconnect::core::{
   CoreClient,
