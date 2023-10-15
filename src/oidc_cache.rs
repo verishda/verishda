@@ -52,7 +52,7 @@ where
             if let Ok(cache_item) = serde_json::from_slice::<CacheItem>(&raw) {
                 let exp = UNIX_EPOCH.add(Duration::from_secs(cache_item.expires_at_secs));
                 if now < exp {
-                    trace!("cache hit")
+                    trace!("return cached metadata instead of retrieving it from source");
                     // we hit the cache and return the content
                     let meta = cache_item.metadata.set_jwks(cache_item.keys);
                     return Ok(meta)
