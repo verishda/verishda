@@ -4,6 +4,7 @@
 use std::str::FromStr;
 
 use crate::store::Cache;
+use openidconnect::reqwest::http_client;
 
 
 use openidconnect::{
@@ -41,7 +42,7 @@ fn fetch_metadata(issuer_url: &str) -> Result<CoreProviderMetadata, anyhow::Erro
     let issuer_url = IssuerUrl::new(issuer_url.to_string())?;
     let provider_metadata_result = CoreProviderMetadata::discover(
         &issuer_url,
-        client_impl::exec,
+        http_client,
     );
     trace!("discovery result received.");
     let provider_metadata = match provider_metadata_result {

@@ -2,6 +2,7 @@ use std::cell::OnceCell;
 
 use anyhow::{anyhow, Result};
 use axum::debug_handler;
+use axum::extract::OriginalUri;
 use axum::{Router, routing::{get, post, put, any_service}, response::{Response, IntoResponse, Redirect, Html}, Json, body::{Full, Body, Empty}, extract::{Path, FromRequestParts, rejection::TypedHeaderRejectionReason}, async_trait, TypedHeader, headers::{Authorization, authorization::Bearer}, RequestPartsExt, Extension};
 
 use bytes::Bytes;
@@ -33,6 +34,8 @@ mod oidc_cache;
 mod error;
 mod config;
 
+const SWAGGER_SPEC_URL: &str = "/api/public/openapi.yaml";
+
 fn init_logging() {
     let rust_log_config = config::get("rust_log").ok();
     let mut logger_builder = env_logger::builder();
@@ -47,37 +50,30 @@ fn init_logging() {
 async fn main(){
     init_logging();
 
+    let mut router: Router = Router::new()
     
-    // only the spin-inserted header 'spin-full-url' appears to hold just that
-    // the full URL for the call. We need the scheme and authority sections
-    // to build the redirect url
-    let spin_full_url = req.headers().get("spin-full-url").unwrap().to_owned();
-    let spin_full_url = spin_full_url.to_str().unwrap().to_owned();
+    .route(SWAGGER_SPEC_URL, get(handle_get_swagger_spec))
+    .route("/api/public/swagger-ui/:path", get(handle_get_swagger_ui))
+    .route("/api/sites", get(handle_get_sites))
+    .route("/api/sites/:siteId/presence", get(handle_get_sites_siteid_presence))
+    .route("/api/sites/:siteId/hello", post(handle_post_sites_siteid_hello))
+    .route("/api/sites/:siteId/announce", put(handle_put_announce))
+    .route("/api/*", get(handle_get_fallback))
+    .layer(Extension(MemoryStore::new()));
+}
 
-    let mut redirect_url = http::Uri::try_from(spin_full_url)?.into_parts();
+#[debug_handler]
+async fn handle_get_fallback(OriginalUri(full_url): OriginalUri) -> Result<Redirect, HandlerError> {
+    trace!("full_url: {full_url}");
+
+    let mut redirect_url = http::Uri::try_from(full_url)?.into_parts();
     redirect_url.path_and_query = Some(http::uri::PathAndQuery::from_static("/api/public/swagger-ui/oauth2-redirect.html"));
-    let redirect_url = http::Uri::from_parts(redirect_url).unwrap();
+    let redirect_url = http::Uri::from_parts(redirect_url)?.to_string();
     
-
-    let mut router = Router::new();
-    
-    let swagger_spec_url = "/api/public/openapi.yaml";
-    let swagger_ui_url = format!("/api/public/swagger-ui/index.html?url={swagger_spec_url}&oauth2RedirectUrl={redirect_url}");
-
-router.route("/foo", get(foo));
-    router.route(swagger_spec_url, get(handle_get_swagger_spec));
-    router.route("/api/public/swagger-ui/:path", get(handle_get_swagger_ui));
-    router.route("/api/sites", get(handle_get_sites));
-    router.route("/api/sites/:siteId/presence", get(handle_get_sites_siteid_presence));
-    router.route("/api/sites/:siteId/hello", post(handle_post_sites_siteid_hello));
-    router.route("/api/sites/:siteId/announce", put(handle_put_announce));
-    router.route("/api/*", get(move || async {Redirect::temporary(&swagger_ui_url).into_response()}));
-    router.layer(Extension(MemoryStore::new()));
+    let swagger_ui_url = format!("/api/public/swagger-ui/index.html?url={SWAGGER_SPEC_URL}&oauth2RedirectUrl={redirect_url}");
+    Ok(Redirect::temporary(&swagger_ui_url))
 }
 
-async fn foo() -> Result<(), HandlerError> {
-    Ok(())
-}
 async fn handle_get_swagger_spec() -> Result<Response<Full<Bytes>>, HandlerError> {
     let resp = Response::builder()
     .status(200)
@@ -105,8 +101,9 @@ async fn handle_get_swagger_ui(Path(path): Path<String>) -> Result<Response<Full
     Ok(resp)
 }
 
-async fn handle_get_sites_siteid_presence(_auth_info: AuthInfo, Path(site_id): Path<&str>) -> Result<Json<Vec<Presence>>, HandlerError> {
-    let presences = site::get_presence_on_site(site_id)?;
+#[debug_handler]
+async fn handle_get_sites_siteid_presence(_auth_info: AuthInfo, Path(site_id): Path<String>) -> Result<Json<Vec<Presence>>, HandlerError> {
+    let presences = site::get_presence_on_site(&site_id)?;
     Ok(Json(presences))
 }
 
@@ -120,10 +117,10 @@ fn to_logged_as_name(auth_info: &AuthInfo) -> String {
     .to_string()
 }
 
-async fn handle_post_sites_siteid_hello(auth_info: AuthInfo, Path(site_id): Path<&str>) -> Result<Json<Vec<Presence>>, HandlerError> {
+async fn handle_post_sites_siteid_hello(auth_info: AuthInfo, Path(site_id): Path<String>) -> Result<Json<Vec<Presence>>, HandlerError> {
 
     let logged_as_name = to_logged_as_name(&auth_info);
-    site::hello_site(&auth_info.subject, &logged_as_name, site_id)?;
+    site::hello_site(&auth_info.subject, &logged_as_name, &site_id)?;
 
     // to return the current presences, proceed like with an ordinary
     // presence request
@@ -131,9 +128,10 @@ async fn handle_post_sites_siteid_hello(auth_info: AuthInfo, Path(site_id): Path
 
 }
 
-async fn handle_put_announce(auth_info: AuthInfo, Path(site_id): Path<&str>, Json(announcements): Json<Vec<PresenceAnnouncement>>) -> Result<impl IntoResponse, HandlerError> {
+#[debug_handler]
+async fn handle_put_announce(auth_info: AuthInfo, Path(site_id): Path<String>, Json(announcements): Json<Vec<PresenceAnnouncement>>) -> Result<impl IntoResponse, HandlerError> {
 
-    site::announce_presence_on_site(&auth_info.subject, site_id, &to_logged_as_name(&auth_info), &announcements)?;
+    site::announce_presence_on_site(&auth_info.subject, &site_id, &to_logged_as_name(&auth_info), &announcements)?;
 
     Ok(Response::builder()
         .status(StatusCode::NO_CONTENT)
@@ -157,7 +155,7 @@ where
         
         
         let mut ox = oidc::OidcExtension::default();
-        let issuer_url = config::get("issuer_url").or(Err(anyhow!("issuer_url not defined. Use a URL that can serve as a base URL for OIDC discovery")))?;
+        let issuer_url = config::get("issuer_url").or(Err(AuthError::ConfigurationError(anyhow!("issuer_url not defined. Use a URL that can serve as a base URL for OIDC discovery"))))?;
         let store = parts.extensions.get::<MemoryStore>().expect("memory store not set");
         let cache = MetadataCache::new(store.clone());
         if let Err(e) = ox.init(cache, &issuer_url) {
@@ -168,8 +166,8 @@ where
             .extract::<TypedHeader<Authorization<Bearer>>>()
             .await
             .map_err(|e| {match e.reason() {
-                &TypedHeaderRejectionReason::Error(_) => AuthError::InvalidToken,
                 &TypedHeaderRejectionReason::Missing => AuthError::TokenMissing,
+                &_ => AuthError::InvalidToken,
             }})?;
         // Decode the user data
         let auth_info_opt = ox.check_auth_token(bearer.token());
@@ -197,7 +195,7 @@ enum AuthError {
 }
 
 fn status_html_of(status: StatusCode, html_str: &str) -> Response {
-    let mut resp = Html::from(html_str).into_response();
+    let mut resp = Html::from(html_str.to_string()).into_response();
     *resp.status_mut() = status;
     resp
 }
