@@ -1,0 +1,5 @@
+
+
+impl axum::extract::FromRequestParts for AuthInfo{
+
+}

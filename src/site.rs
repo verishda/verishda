@@ -2,8 +2,10 @@ use std::{panic::UnwindSafe, collections::HashMap};
 
 use anyhow::Result;
 use serde::{Serialize, Deserialize};
-use spin_sdk::{pg::{ParameterValue, Decode, self, DbValue}, config};
+//use spin_sdk::{pg::{ParameterValue, Decode, self, DbValue}, config};
 use chrono::NaiveDate;
+
+use crate::config;
 
 #[derive(Serialize)]
 pub(super) struct Site {
@@ -27,6 +29,7 @@ pub(super) struct PresenceAnnouncement {
 
 
 pub(super) fn get_sites() -> Result<Vec<Site>> {
+/*
     let stmt = String::new() +
     "SELECT id, name, longitude, latitude FROM sites";
 
@@ -43,6 +46,8 @@ pub(super) fn get_sites() -> Result<Vec<Site>> {
     ;
 
     Ok(sites)
+    */
+Ok(vec![])
 }
 
 
@@ -51,7 +56,7 @@ fn pg_address() -> Result<String> {
 }
 
 pub(super) fn hello_site(user_id: &str, logged_as_name: &str, site_id: &str) -> Result<()>{
-
+/*
     update_userinfo(user_id, logged_as_name)?;
 
     let stmt = String::new() +
@@ -64,11 +69,13 @@ pub(super) fn hello_site(user_id: &str, logged_as_name: &str, site_id: &str) -> 
         ParameterValue::Str(site_id),
     ];
     pg::execute(&pg_address()?, &stmt, &params).unwrap();
-
+*/
     Ok(())
 }
 
 pub(super) fn get_presence_on_site(site_id: &str) -> Result<Vec<Presence>> {
+
+/*
     let stmt = String::new() +
     "SELECT u.user_id, u.logged_as_name, to_char(a.present_on, 'YYYY-MM-DD')
     FROM user_announcements AS a JOIN user_info AS u ON a.user_id=u.user_id 
@@ -116,10 +123,12 @@ pub(super) fn get_presence_on_site(site_id: &str) -> Result<Vec<Presence>> {
     .map(|p|p.clone())
     .collect()
     ;
-    
+*/
+let presences = Vec::new();
     Ok(presences)
 }
 
+/*
 fn wrap_in_transaction<F,R>(pg_address: &str, f: F) -> Result<R>
 where F: Fn() -> Result<R> + UnwindSafe
 {
@@ -141,8 +150,9 @@ where F: Fn() -> Result<R> + UnwindSafe
     }
 
 }
-
+*/
 fn update_userinfo(user_id: &str, logged_as_name: &str) -> Result<()> {
+    /*
     let stmt = "INSERT INTO user_info (user_id, logged_as_name, last_seen) VALUES ($1, $2, now()) ON CONFLICT (user_id) 
     DO UPDATE SET logged_as_name=$2, last_seen=now()";
     pg::execute(&pg_address()?, stmt, &[
@@ -150,11 +160,12 @@ fn update_userinfo(user_id: &str, logged_as_name: &str) -> Result<()> {
         ParameterValue::Str(logged_as_name)
         ]
     )?;
+    */
     Ok(())
 }
 
 pub(super) fn announce_presence_on_site(user_id: &str, site_id: &str, logged_as_name: &str, announcements: &[PresenceAnnouncement]) -> Result<()> {
-
+/*
     wrap_in_transaction(&pg_address()?, move || {
 
         update_userinfo(user_id, logged_as_name)?;
@@ -176,4 +187,7 @@ pub(super) fn announce_presence_on_site(user_id: &str, site_id: &str, logged_as_
 
         Ok(())
     })
+    */
+Ok(())
+
 }
