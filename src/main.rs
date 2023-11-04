@@ -64,7 +64,8 @@ async fn main(){
     .route("/api/sites/:siteId/presence", get(handle_get_sites_siteid_presence))
     .route("/api/sites/:siteId/hello", post(handle_post_sites_siteid_hello))
     .route("/api/sites/:siteId/announce", put(handle_put_announce))
-    .route("/api/*path", get(handle_get_fallback))
+    .route("/", get(handle_get_fallback))
+    .route("/*path", get(handle_get_fallback))
     .layer(Extension(MemoryStore::new()));
 
     let bind_address = config::get("bind_address").unwrap_or_else(|_|"0.0.0.0:3000".to_string()).parse().unwrap();
