@@ -58,8 +58,13 @@ async fn main(){
     .route("/api/sites/:siteId/presence", get(handle_get_sites_siteid_presence))
     .route("/api/sites/:siteId/hello", post(handle_post_sites_siteid_hello))
     .route("/api/sites/:siteId/announce", put(handle_put_announce))
-    .route("/api/*", get(handle_get_fallback))
+    .route("/api/*path", get(handle_get_fallback))
     .layer(Extension(MemoryStore::new()));
+
+    axum::Server::bind(&"0.0.0.0:3000".parse().unwrap())
+    .serve(router.into_make_service())
+    .await
+    .unwrap();
 }
 
 #[debug_handler]
