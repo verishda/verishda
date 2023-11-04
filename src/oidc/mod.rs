@@ -4,7 +4,7 @@
 use std::str::FromStr;
 
 use crate::store::Cache;
-use openidconnect::reqwest::http_client;
+use openidconnect::reqwest::async_http_client;
 
 
 use openidconnect::{
@@ -37,13 +37,13 @@ struct OidcConfig {
 }
 
 
-fn fetch_metadata(issuer_url: &str) -> Result<CoreProviderMetadata, anyhow::Error> {
+async fn fetch_metadata(issuer_url: &str) -> Result<CoreProviderMetadata, anyhow::Error> {
     trace!("acquiring provider metadata via OIDC discovery...");
     let issuer_url = IssuerUrl::new(issuer_url.to_string())?;
-    let provider_metadata_result = CoreProviderMetadata::discover(
-        &issuer_url,
-        http_client,
-    );
+    let provider_metadata_result = CoreProviderMetadata::discover_async(
+        issuer_url,
+        async_http_client,
+    ).await;
     trace!("discovery result received.");
     let provider_metadata = match provider_metadata_result {
         Ok(m) => m,
@@ -57,13 +57,20 @@ fn fetch_metadata(issuer_url: &str) -> Result<CoreProviderMetadata, anyhow::Erro
     Ok(provider_metadata)
 }
 
+const OIDC_METADATA_KEY: &str = "oidc_metadata";
+
 impl OidcExtension {
-    pub fn init(&mut self, mut cache: impl Cache<str, CoreProviderMetadata>, issuer_url: &str) -> anyhow::Result<()> {
+    pub async fn init(&mut self, mut cache: impl Cache<str, CoreProviderMetadata>, issuer_url: &str) -> anyhow::Result<()> {
         if self.config.is_none() {
             trace!("having no OIDC config, initializing..");
-            let provider_metadata = cache.try_get_or_else("oidc_metadata", |_|{
-                fetch_metadata(issuer_url)
-            })?;
+            let provider_metadata = match cache.get(OIDC_METADATA_KEY) {
+                Some(m) => m,
+                None => {
+                    let m = fetch_metadata(issuer_url).await?;
+                    cache.set(OIDC_METADATA_KEY, m.clone());
+                    m
+                }
+            };
 
             trace!("OIDC provider metadata: {provider_metadata:?}");
 

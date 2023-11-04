@@ -6,7 +6,23 @@
 pub trait Cache<K,V> 
 where K: ?Sized
 {
-    fn try_get_or_else(&mut self, key: &str, f: impl FnOnce(&str)->Result<V, anyhow::Error>) -> Result<V,anyhow::Error>;
+    fn get(&self, key: &str) -> Option<V>;
+    fn set(&mut self, key: &str, v: V) -> anyhow::Result<()>;
+    fn try_get_or_else(&mut self, key: &str, f: impl FnOnce(&str)->Result<V, anyhow::Error>) -> Result<V,anyhow::Error> 
+    where V: Clone
+      {
+        if let Some(v) = self.get(key) {
+            return Ok(v);
+        }
+        match f(key) {
+            Ok(v) => {
+                self.set(key, v.clone())?;
+                Ok(v)
+            },
+            Err(e) => Err(e),
+        }
+    }
+
 }
 
 /// Define an abstract key value store using `str` values as keys and `Vec<u8>` as 

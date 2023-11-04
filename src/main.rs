@@ -2,19 +2,20 @@ use std::cell::OnceCell;
 
 use anyhow::{anyhow, Result};
 use axum::debug_handler;
-use axum::extract::OriginalUri;
+use axum::extract::{OriginalUri, Host};
 use axum::{Router, routing::{get, post, put, any_service}, response::{Response, IntoResponse, Redirect, Html}, Json, body::{Full, Body, Empty}, extract::{Path, FromRequestParts, rejection::TypedHeaderRejectionReason}, async_trait, TypedHeader, headers::{Authorization, authorization::Bearer}, RequestPartsExt, Extension};
 
 use bytes::Bytes;
 use error::HandlerError;
 use http::{StatusCode, request::Parts};
 use memory_store::MemoryStore;
-use mime_guess::mime::APPLICATION_JSON;
+use dotenv::dotenv;
 
 use site::{PresenceAnnouncement, Site, Presence};
 use log::{trace, error};
 
 use crate::oidc_cache::MetadataCache;
+use crate::scheme::Scheme;
 
 
 const SWAGGER_SPEC: OnceCell<swagger_ui::Spec> = OnceCell::new();
@@ -33,6 +34,7 @@ mod memory_store;
 mod oidc_cache;
 mod error;
 mod config;
+mod scheme;
 
 const SWAGGER_SPEC_URL: &str = "/api/public/openapi.yaml";
 
@@ -45,7 +47,15 @@ fn init_logging() {
         logger_builder.filter_level(log::LevelFilter::Info);
     }
     logger_builder.init();
-    println!("max logging level is: {}. Use RUST_LOG environment variable to set one of the levels, e.g. RUST_LOG=error", log::max_level());
+    println!("max logging level is: {}.", log::max_level());
+    println!("Use RUST_LOG environment variable to set one of the levels, e.g. RUST_LOG=error");
+}
+
+fn init_dotenv() {
+    if let Ok(path) = dotenv() {
+        let path = path.to_string_lossy();
+        println!("additional environment variables loaded from {path}");
+    }
 }
 
 /// A simple Spin HTTP component.
@@ -54,6 +64,7 @@ async fn main(){
     let executable_name = std::env::args().next().unwrap_or_else(||"unknown".to_string());
     println!("starting {executable_name}...");
 
+    init_dotenv();
     init_logging();
 
     let router: Router = Router::new()
@@ -68,7 +79,7 @@ async fn main(){
     .route("/*path", get(handle_get_fallback))
     .layer(Extension(MemoryStore::new()));
 
-    let bind_address = config::get("bind_address").unwrap_or_else(|_|"0.0.0.0:3000".to_string()).parse().unwrap();
+    let bind_address = config::get("bind_address").unwrap_or_else(|_|"127.0.0.1:3000".to_string()).parse().unwrap();
     log::info!("binding, server available under http://{bind_address}");
     axum::Server::bind(&bind_address)
     .serve(router.into_make_service())
@@ -77,7 +88,8 @@ async fn main(){
 }
 
 #[debug_handler]
-async fn handle_get_fallback(OriginalUri(full_url): OriginalUri) -> Result<Redirect, HandlerError> {
+async fn handle_get_fallback(Scheme(scheme): Scheme, Host(host): Host, OriginalUri(path): OriginalUri) -> Result<Redirect, HandlerError> {
+    let full_url = format!("{scheme}://{host}{path}");
     trace!("full_url: {full_url}");
 
     let mut redirect_url = http::Uri::try_from(full_url)?.into_parts();
@@ -172,7 +184,7 @@ where
         let issuer_url = config::get("issuer_url").or(Err(AuthError::ConfigurationError(anyhow!("issuer_url not defined. Use a URL that can serve as a base URL for OIDC discovery"))))?;
         let store = parts.extensions.get::<MemoryStore>().expect("memory store not set");
         let cache = MetadataCache::new(store.clone());
-        if let Err(e) = ox.init(cache, &issuer_url) {
+        if let Err(e) = ox.init(cache, &issuer_url).await {
             return Err(AuthError::ConfigurationError(e))
         }
             // Extract the token from the authorization header
