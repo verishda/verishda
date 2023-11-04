@@ -41,16 +41,22 @@ fn init_logging() {
     let mut logger_builder = env_logger::builder();
     if let Some(rust_log) = rust_log_config {
         logger_builder.parse_filters(&rust_log);
+    } else {
+        logger_builder.filter_level(log::LevelFilter::Info);
     }
     logger_builder.init();
+    println!("max logging level is: {}. Use RUST_LOG environment variable to set one of the levels, e.g. RUST_LOG=error", log::max_level());
 }
 
 /// A simple Spin HTTP component.
 #[tokio::main]
 async fn main(){
+    let executable_name = std::env::args().next().unwrap_or_else(||"unknown".to_string());
+    println!("starting {executable_name}...");
+
     init_logging();
 
-    let mut router: Router = Router::new()
+    let router: Router = Router::new()
     
     .route(SWAGGER_SPEC_URL, get(handle_get_swagger_spec))
     .route("/api/public/swagger-ui/:path", get(handle_get_swagger_ui))
@@ -61,7 +67,9 @@ async fn main(){
     .route("/api/*path", get(handle_get_fallback))
     .layer(Extension(MemoryStore::new()));
 
-    axum::Server::bind(&"0.0.0.0:3000".parse().unwrap())
+    let bind_address = config::get("bind_address").unwrap_or_else(|_|"0.0.0.0:3000".to_string()).parse().unwrap();
+    log::info!("binding, server available under http://{bind_address}");
+    axum::Server::bind(&bind_address)
     .serve(router.into_make_service())
     .await
     .unwrap();
