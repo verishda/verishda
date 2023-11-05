@@ -2,7 +2,9 @@ use axum::response::{IntoResponse, Response};
 use http::StatusCode;
 
 
-pub struct HandlerError(anyhow::Error);
+pub struct HandlerError(anyhow::Error)
+where Self: Send
+;
 
 impl IntoResponse for HandlerError {
     fn into_response(self) -> Response {

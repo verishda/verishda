@@ -32,5 +32,6 @@ openidconnect = {version="3.0.0"}
 jwt-simple = "0.11"
 axum = {version="0.6.20", features =["headers", "macros", "original-uri"]}
 tokio = {version = "1.33.0", features=["full"] }
-
+tokio-postgres = {version="0.7.10", features=["with-chrono-0_4"]}
+bb8-postgres = {version="0.7.0"}
 [workspace]

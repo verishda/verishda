@@ -1,14 +1,17 @@
-use std::{panic::UnwindSafe, collections::HashMap};
+use std::collections::HashMap;
 
 use anyhow::Result;
 use serde::{Serialize, Deserialize};
 //use spin_sdk::{pg::{ParameterValue, Decode, self, DbValue}, config};
 use chrono::NaiveDate;
 
-use crate::config;
+
+use crate::PgConnection;
 
 #[derive(Serialize)]
-pub(super) struct Site {
+pub(super) struct Site 
+where Self: Send
+{
     id: String,
     name: String,
     longitude: f32,
@@ -16,7 +19,9 @@ pub(super) struct Site {
 }
 
 #[derive(Serialize, Default, Clone)]
-pub(super) struct Presence {
+pub(super) struct Presence 
+where Self: Send
+{
     pub logged_as_name: String,
     pub currently_present: bool,
     pub announced_dates: Vec<NaiveDate>,
@@ -28,54 +33,48 @@ pub(super) struct PresenceAnnouncement {
 }
 
 
-pub(super) fn get_sites() -> Result<Vec<Site>> {
-/*
+pub(super) async fn get_sites(pg: PgConnection) -> Result<Vec<Site>> 
+where Result<Vec<Site>>: Send + Sync
+{
+
     let stmt = String::new() +
     "SELECT id, name, longitude, latitude FROM sites";
 
-    let row_set = pg::query(&pg_address()?, &stmt, &[])?;
+    let row_set = pg.query(&stmt, &[]).await?;
     let sites: Vec<_> = row_set
-    .rows.iter()
+    .iter()
     .map(|r|Site {
-        id: String::decode(&r[0]).unwrap(),
-        name: String::decode(&r[1]).unwrap(), 
-        longitude: f32::decode(&r[2]).unwrap(), 
-        latitude: f32::decode(&r[3]).unwrap(),
+        id: r.get(0),
+        name: r.get(1), 
+        longitude: r.get(2), 
+        latitude: r.get(3),
     })
     .collect()
     ;
 
     Ok(sites)
-    */
-Ok(vec![])
 }
 
 
-fn pg_address() -> Result<String> {
-    Ok(config::get("pg_address")?)
-}
+pub(super) async fn hello_site(pg: &PgConnection, user_id: &str, logged_as_name: &str, site_id: &str) -> Result<()>{
 
-pub(super) fn hello_site(user_id: &str, logged_as_name: &str, site_id: &str) -> Result<()>{
-/*
-    update_userinfo(user_id, logged_as_name)?;
+    update_userinfo(pg, user_id, logged_as_name).await?;
 
     let stmt = String::new() +
     "INSERT INTO logged_into_site (user_id, logged_as_name, site_id, last_seen) VALUES ($1, $2, $3, now()) ON CONFLICT (user_id) 
     DO UPDATE SET logged_as_name=$2, site_id=$3, last_seen=now()";
 
-    let params = [
-        ParameterValue::Str(user_id),
-        ParameterValue::Str(logged_as_name),
-        ParameterValue::Str(site_id),
-    ];
-    pg::execute(&pg_address()?, &stmt, &params).unwrap();
-*/
+    pg.execute(&stmt, &[
+        &user_id.to_string(),
+        &logged_as_name.to_string(),
+        &site_id.to_string(),
+    ]).await?;
+
     Ok(())
 }
 
-pub(super) fn get_presence_on_site(site_id: &str) -> Result<Vec<Presence>> {
+pub(super) async fn get_presence_on_site(pg: PgConnection, site_id: &str) -> Result<Vec<Presence>> {
 
-/*
     let stmt = String::new() +
     "SELECT u.user_id, u.logged_as_name, to_char(a.present_on, 'YYYY-MM-DD')
     FROM user_announcements AS a JOIN user_info AS u ON a.user_id=u.user_id 
@@ -87,15 +86,15 @@ pub(super) fn get_presence_on_site(site_id: &str) -> Result<Vec<Presence>> {
     FROM logged_into_site AS s JOIN user_info AS u ON s.user_id=u.user_id 
     WHERE s.site_id=$1 AND u.last_seen >= now() - INTERVAL '10 minutes'";
 
-    let row_set = pg::query(&pg_address()?, &stmt, &[
-        ParameterValue::Str(site_id),
-    ])?;
+    let row_set = pg.query(&stmt, &[
+        &site_id.to_string(),
+    ]).await?;
 
     let presences: Vec<_> = row_set
-    .rows.iter()
+    .iter()
     .fold(HashMap::<String,Presence>::new(), |mut m,r|{
-        let user_id = String::decode(&r[0]).unwrap();
-        let present_on = if let DbValue::Str(s) = &r[2] {
+        let user_id = r.get::<_,String>(0);
+        let present_on = if let Some(s) = r.get::<_,Option<String>>(2) {
             let date = NaiveDate::parse_from_str(&s, "%Y-%m-%d").unwrap();
             Some(date)
         } else {
@@ -104,7 +103,7 @@ pub(super) fn get_presence_on_site(site_id: &str) -> Result<Vec<Presence>> {
 
         if !m.contains_key(&user_id) {
             m.insert(user_id.clone(), Presence {
-                logged_as_name:String::decode(&r[1]).unwrap(), 
+                logged_as_name: r.get(1), 
                 ..Default::default()}
             );
         }
@@ -123,8 +122,7 @@ pub(super) fn get_presence_on_site(site_id: &str) -> Result<Vec<Presence>> {
     .map(|p|p.clone())
     .collect()
     ;
-*/
-let presences = Vec::new();
+
     Ok(presences)
 }
 
@@ -151,43 +149,37 @@ where F: Fn() -> Result<R> + UnwindSafe
 
 }
 */
-fn update_userinfo(user_id: &str, logged_as_name: &str) -> Result<()> {
-    /*
+async fn update_userinfo(pg: &PgConnection, user_id: &str, logged_as_name: &str) -> Result<()> {
+    
     let stmt = "INSERT INTO user_info (user_id, logged_as_name, last_seen) VALUES ($1, $2, now()) ON CONFLICT (user_id) 
     DO UPDATE SET logged_as_name=$2, last_seen=now()";
-    pg::execute(&pg_address()?, stmt, &[
-        ParameterValue::Str(user_id),
-        ParameterValue::Str(logged_as_name)
+    pg.execute(stmt, &[
+        &user_id.to_string(),
+        &logged_as_name.to_string()
         ]
-    )?;
-    */
+    ).await?;
+    
     Ok(())
 }
 
-pub(super) fn announce_presence_on_site(user_id: &str, site_id: &str, logged_as_name: &str, announcements: &[PresenceAnnouncement]) -> Result<()> {
-/*
-    wrap_in_transaction(&pg_address()?, move || {
+pub(super) async fn announce_presence_on_site(pg: &mut PgConnection, user_id: &str, site_id: &str, logged_as_name: &str, announcements: &[PresenceAnnouncement]) -> Result<()> {
 
-        update_userinfo(user_id, logged_as_name)?;
+    update_userinfo(pg, user_id, logged_as_name).await?;
 
-        pg::execute(&pg_address()?, "DELETE FROM user_announcements WHERE user_id=$1 AND site_id=$2", &[
-            ParameterValue::Str(user_id),
-            ParameterValue::Str(site_id)
-        ])?;
+    let pg = pg.transaction().await?;
+    pg.execute("DELETE FROM user_announcements WHERE user_id=$1 AND site_id=$2", &[
+        &user_id.to_string(),
+        &site_id.to_string()
+    ]).await?;
 
-        for a in announcements {
-            let sql_date = a.date.format("%Y/%m/%d").to_string();
-            
-            let stmt = format!("INSERT INTO user_announcements (user_id, site_id, present_on) VALUES ($1, $2, '{}')", sql_date);
-            pg::execute(&pg_address()?, &stmt, &[
-                ParameterValue::Str(user_id),
-                ParameterValue::Str(site_id)
-            ])?;
-        }
-
-        Ok(())
-    })
-    */
-Ok(())
-
+    for a in announcements {
+        let sql_date = a.date.format("%Y/%m/%d").to_string();
+        
+        let stmt = format!("INSERT INTO user_announcements (user_id, site_id, present_on) VALUES ($1, $2, '{}')", sql_date);
+        pg.execute(&stmt, &[
+            &user_id.to_string(),
+            &site_id.to_string()
+        ]).await?;
+    }
+    Ok(pg.commit().await?)
 }

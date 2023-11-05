@@ -1,10 +1,12 @@
 use std::cell::OnceCell;
+use std::ops::{Deref, DerefMut};
 
 use anyhow::{anyhow, Result};
 use axum::debug_handler;
-use axum::extract::{OriginalUri, Host};
-use axum::{Router, routing::{get, post, put, any_service}, response::{Response, IntoResponse, Redirect, Html}, Json, body::{Full, Body, Empty}, extract::{Path, FromRequestParts, rejection::TypedHeaderRejectionReason}, async_trait, TypedHeader, headers::{Authorization, authorization::Bearer}, RequestPartsExt, Extension};
+use axum::extract::{OriginalUri, Host, FromRef, State};
+use axum::{Router, routing::{get, post, put}, response::{Response, IntoResponse, Redirect, Html}, Json, body::{Full, Empty}, extract::{Path, FromRequestParts, rejection::TypedHeaderRejectionReason}, async_trait, TypedHeader, headers::{Authorization, authorization::Bearer}, RequestPartsExt, Extension};
 
+use bb8_postgres::bb8::{Pool, PooledConnection};
 use bytes::Bytes;
 use error::HandlerError;
 use http::{StatusCode, request::Parts};
@@ -13,6 +15,8 @@ use dotenv::dotenv;
 
 use site::{PresenceAnnouncement, Site, Presence};
 use log::{trace, error};
+use tokio_postgres::{NoTls, Connection};
+use bb8_postgres::PostgresConnectionManager;
 
 use crate::oidc_cache::MetadataCache;
 use crate::scheme::Scheme;
@@ -58,6 +62,45 @@ fn init_dotenv() {
     }
 }
 
+type ConnectionPool = Pool<PostgresConnectionManager<NoTls>>;
+struct PgConnection(PooledConnection<'static, PostgresConnectionManager<NoTls>>);
+impl Deref for PgConnection {
+    type Target = PooledConnection<'static, PostgresConnectionManager<NoTls>>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl DerefMut for PgConnection {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.0
+    }
+}
+
+#[async_trait]
+impl<S> FromRequestParts<S> for PgConnection
+where
+    ConnectionPool: FromRef<S>,
+    S: Send + Sync,
+{
+    type Rejection = (StatusCode, String);
+
+    async fn from_request_parts(_parts: &mut Parts, state: &S) -> Result<Self, Self::Rejection> {
+        let pool = ConnectionPool::from_ref(state);
+
+        let conn = pool.get_owned().await.map_err(internal_error)?;
+
+        Ok(Self(conn))
+    }
+}
+fn internal_error<E>(err: E) -> (StatusCode, String)
+where
+    E: std::error::Error,
+{
+    (StatusCode::INTERNAL_SERVER_ERROR, err.to_string())
+}
+
 /// A simple Spin HTTP component.
 #[tokio::main]
 async fn main(){
@@ -67,8 +110,18 @@ async fn main(){
     init_dotenv();
     init_logging();
 
-    let router: Router = Router::new()
+    log::debug!("connecting to database...");
+    let pg_address = config::get("pg_address")
+    .expect("no postgres database connection configured, set PG_ADDRESS variable");
+    let manager =
+        PostgresConnectionManager::new_from_stringlike(pg_address, NoTls)
+            .unwrap();
+    let pool = Pool::builder()
+    .build(manager)
+    .await
+    .expect("connection to database failed");
     
+    let router = Router::new()
     .route(SWAGGER_SPEC_URL, get(handle_get_swagger_spec))
     .route("/api/public/swagger-ui/:path", get(handle_get_swagger_ui))
     .route("/api/sites", get(handle_get_sites))
@@ -77,7 +130,8 @@ async fn main(){
     .route("/api/sites/:siteId/announce", put(handle_put_announce))
     .route("/", get(handle_get_fallback))
     .route("/*path", get(handle_get_fallback))
-    .layer(Extension(MemoryStore::new()));
+    .layer(Extension(MemoryStore::new()))
+    .with_state(pool);
 
     let bind_address = config::get("bind_address").unwrap_or_else(|_|"127.0.0.1:3000".to_string()).parse().unwrap();
     log::info!("binding, server available under http://{bind_address}");
@@ -109,6 +163,7 @@ async fn handle_get_swagger_spec() -> Result<Response<Full<Bytes>>, HandlerError
     Ok(resp)
 }
 
+#[debug_handler]
 async fn handle_get_swagger_ui(Path(path): Path<String>) -> Result<Response<Full<Bytes>>, HandlerError>{
 
     let resp = match swagger_ui::Assets::get(&path) {
@@ -128,8 +183,8 @@ async fn handle_get_swagger_ui(Path(path): Path<String>) -> Result<Response<Full
 }
 
 #[debug_handler]
-async fn handle_get_sites_siteid_presence(_auth_info: AuthInfo, Path(site_id): Path<String>) -> Result<Json<Vec<Presence>>, HandlerError> {
-    let presences = site::get_presence_on_site(&site_id)?;
+async fn handle_get_sites_siteid_presence(con: PgConnection, _: State<ConnectionPool>, _auth_info: AuthInfo, Path(site_id): Path<String>) -> Result<Json<Vec<Presence>>, HandlerError> {
+    let presences = site::get_presence_on_site(con, &site_id).await?;
     Ok(Json(presences))
 }
 
@@ -143,21 +198,22 @@ fn to_logged_as_name(auth_info: &AuthInfo) -> String {
     .to_string()
 }
 
-async fn handle_post_sites_siteid_hello(auth_info: AuthInfo, Path(site_id): Path<String>) -> Result<Json<Vec<Presence>>, HandlerError> {
+#[debug_handler]
+async fn handle_post_sites_siteid_hello(con: PgConnection, s: State<ConnectionPool>, auth_info: AuthInfo, Path(site_id): Path<String>, _: State<ConnectionPool>) -> Result<Json<Vec<Presence>>, HandlerError> {
 
     let logged_as_name = to_logged_as_name(&auth_info);
-    site::hello_site(&auth_info.subject, &logged_as_name, &site_id)?;
+    site::hello_site(&con, &auth_info.subject, &logged_as_name, &site_id).await?;
 
     // to return the current presences, proceed like with an ordinary
     // presence request
-    return handle_get_sites_siteid_presence(auth_info, Path(site_id)).await
+    return handle_get_sites_siteid_presence(con, s, auth_info, Path(site_id)).await
 
 }
 
 #[debug_handler]
-async fn handle_put_announce(auth_info: AuthInfo, Path(site_id): Path<String>, Json(announcements): Json<Vec<PresenceAnnouncement>>) -> Result<impl IntoResponse, HandlerError> {
+async fn handle_put_announce(mut con: PgConnection, _: State<ConnectionPool>, auth_info: AuthInfo, Path(site_id): Path<String>, Json(announcements): Json<Vec<PresenceAnnouncement>>) -> Result<impl IntoResponse, HandlerError> {
 
-    site::announce_presence_on_site(&auth_info.subject, &site_id, &to_logged_as_name(&auth_info), &announcements)?;
+    site::announce_presence_on_site(&mut con, &auth_info.subject, &site_id, &to_logged_as_name(&auth_info), &announcements).await?;
 
     Ok(Response::builder()
         .status(StatusCode::NO_CONTENT)
@@ -165,8 +221,10 @@ async fn handle_put_announce(auth_info: AuthInfo, Path(site_id): Path<String>, J
     )
 }
 
-async fn handle_get_sites(_auth_info: AuthInfo) -> Result<Json<Vec<Site>>, HandlerError> {
-    Ok(Json(site::get_sites()?))
+#[debug_handler]
+async fn handle_get_sites(con: PgConnection, State(_state): State<ConnectionPool>, _auth_info: AuthInfo) -> Result<Json<Vec<Site>>, HandlerError> {
+    let sites = site::get_sites(con).await?;
+    Ok(Json(sites))
 }
 
 #[async_trait]
@@ -238,4 +296,5 @@ impl IntoResponse for AuthError
         }
     }
 }
+
 
