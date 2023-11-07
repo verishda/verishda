@@ -2,7 +2,6 @@ use std::collections::HashMap;
 
 use anyhow::Result;
 use serde::{Serialize, Deserialize};
-//use spin_sdk::{pg::{ParameterValue, Decode, self, DbValue}, config};
 use chrono::NaiveDate;
 
 
@@ -126,29 +125,7 @@ pub(super) async fn get_presence_on_site(pg: PgConnection, site_id: &str) -> Res
     Ok(presences)
 }
 
-/*
-fn wrap_in_transaction<F,R>(pg_address: &str, f: F) -> Result<R>
-where F: Fn() -> Result<R> + UnwindSafe
-{
-    pg::execute(pg_address, "BEGIN;", &[]).unwrap();
-    match std::panic::catch_unwind(f) {
-        Ok(f_result) => {
-            match &f_result {
-                &Ok(_) => pg::execute(pg_address, "COMMIT;", &[])?,
-                &Err(_) => pg::execute(pg_address, "ROLLBACK;", &[])?,
-            };
 
-            f_result
-        },
-        Err(panic) => {
-            pg::execute(pg_address, "ROLLBACK;", &[]).unwrap();
-
-            std::panic::resume_unwind(panic)
-        }
-    }
-
-}
-*/
 async fn update_userinfo(pg: &PgConnection, user_id: &str, logged_as_name: &str) -> Result<()> {
     
     let stmt = "INSERT INTO user_info (user_id, logged_as_name, last_seen) VALUES ($1, $2, now()) ON CONFLICT (user_id) 
