@@ -2,6 +2,7 @@ use std::cell::OnceCell;
 use std::ops::{Deref, DerefMut};
 
 use anyhow::{anyhow, Result};
+use axum::body::{Body, HttpBody};
 use axum::debug_handler;
 use axum::extract::{OriginalUri, Host, FromRef, State};
 use axum::{Router, routing::{get, post, put}, response::{Response, IntoResponse, Redirect, Html}, Json, body::{Full, Empty}, extract::{Path, FromRequestParts, rejection::TypedHeaderRejectionReason}, async_trait, TypedHeader, headers::{Authorization, authorization::Bearer}, RequestPartsExt, Extension};
@@ -37,12 +38,12 @@ mod store;
 mod memory_store;
 mod oidc_cache;
 mod error;
-mod config;
+pub mod config;
 mod scheme;
 
 const SWAGGER_SPEC_URL: &str = "/api/public/openapi.yaml";
 
-fn init_logging() {
+pub fn init_logging() {
     let rust_log_config = config::get("rust_log").ok();
     let mut logger_builder = env_logger::builder();
     if let Some(rust_log) = rust_log_config {
@@ -53,13 +54,6 @@ fn init_logging() {
     logger_builder.init();
     println!("max logging level is: {}.", log::max_level());
     println!("Use RUST_LOG environment variable to set one of the levels, e.g. RUST_LOG=error");
-}
-
-fn init_dotenv() {
-    if let Ok(path) = dotenv() {
-        let path = path.to_string_lossy();
-        println!("additional environment variables loaded from {path}");
-    }
 }
 
 type ConnectionPool = Pool<PostgresConnectionManager<NoTls>>;
@@ -101,27 +95,9 @@ where
     (StatusCode::INTERNAL_SERVER_ERROR, err.to_string())
 }
 
-/// A simple Spin HTTP component.
-#[tokio::main]
-async fn main(){
-    let executable_name = std::env::args().next().unwrap_or_else(||"unknown".to_string());
-    println!("starting {executable_name}...");
-
-    init_dotenv();
-    init_logging();
-
-    log::debug!("connecting to database...");
-    let pg_address = config::get("pg_address")
-    .expect("no postgres database connection configured, set PG_ADDRESS variable");
-    let manager =
-        PostgresConnectionManager::new_from_stringlike(pg_address, NoTls)
-            .unwrap();
-    let pool = Pool::builder()
-    .build(manager)
-    .await
-    .expect("connection to database failed");
-    
-    let router = Router::new()
+pub fn build_router(pool: Pool<PostgresConnectionManager<NoTls>>) -> Router
+{
+    return Router::new()
     .route(SWAGGER_SPEC_URL, get(handle_get_swagger_spec))
     .route("/api/public/swagger-ui/:path", get(handle_get_swagger_ui))
     .route("/api/sites", get(handle_get_sites))
@@ -131,14 +107,8 @@ async fn main(){
     .route("/", get(handle_get_fallback))
     .route("/*path", get(handle_get_fallback))
     .layer(Extension(MemoryStore::new()))
-    .with_state(pool);
+    .with_state(pool)
 
-    let bind_address = config::get("bind_address").unwrap_or_else(|_|"127.0.0.1:3000".to_string()).parse().unwrap();
-    log::info!("binding, server available under http://{bind_address}");
-    axum::Server::bind(&bind_address)
-    .serve(router.into_make_service())
-    .await
-    .unwrap();
 }
 
 #[debug_handler]

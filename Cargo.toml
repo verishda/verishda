@@ -1,12 +1,13 @@
 [package]
-name = "hoozin-server"
+name = "verishda"
 authors = ["Pachler, Uwe <uwe.pachler@gmail.com>"]
 description = ""
 version = "0.1.0"
 edition = "2021"
 
-#[lib]
-#crate-type = [ "cdylib" ]
+[[bin]]
+name = "verishda-standalone"
+path = "src/bin/standalone.rs"
 
 [dependencies]
 # date and time

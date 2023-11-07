@@ -1008,31 +1008,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "hoozin-server"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "axum",
- "bb8-postgres",
- "bytes",
- "chrono",
- "dotenv",
- "env_logger",
- "http",
- "jwt-simple",
- "log",
- "mime_guess",
- "openidconnect",
- "serde",
- "serde_json",
- "swagger-ui",
- "thiserror",
- "tokio",
- "tokio-postgres",
- "wit-bindgen-rust",
-]
-
-[[package]]
 name = "http"
 version = "0.2.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2792,6 +2767,31 @@ dependencies = [
  "idna",
  "percent-encoding",
  "serde",
+]
+
+[[package]]
+name = "verishda"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "axum",
+ "bb8-postgres",
+ "bytes",
+ "chrono",
+ "dotenv",
+ "env_logger",
+ "http",
+ "jwt-simple",
+ "log",
+ "mime_guess",
+ "openidconnect",
+ "serde",
+ "serde_json",
+ "swagger-ui",
+ "thiserror",
+ "tokio",
+ "tokio-postgres",
+ "wit-bindgen-rust",
 ]
 
 [[package]]
