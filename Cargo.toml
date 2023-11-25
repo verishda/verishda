@@ -4,10 +4,15 @@ authors = ["Pachler, Uwe <uwe.pachler@gmail.com>"]
 description = ""
 version = "0.1.0"
 edition = "2021"
+default-run = "verishda-standalone"
 
 [[bin]]
 name = "verishda-standalone"
 path = "src/bin/standalone.rs"
+
+#[[bin]]
+#name = "verishda-shuttle"
+#path = "src/bin/shuttle.rs"
 
 [dependencies]
 # date and time
@@ -33,6 +38,10 @@ openidconnect = {version="3.0.0"}
 jwt-simple = "0.11"
 axum = {version="0.6.20", features =["headers", "macros", "original-uri"]}
 tokio = {version = "1.33.0", features=["full"] }
-tokio-postgres = {version="0.7.10", features=["with-chrono-0_4"]}
-bb8-postgres = {version="0.7.0"}
+sqlx = {version = "0.7", features=["runtime-tokio","tls-rustls"]}
+
+shuttle-axum = "0.34.0"
+shuttle-runtime = "0.34.0"
+shuttle-shared-db = {version="0.34.0", features=["postgres"]}
+
 [workspace]
