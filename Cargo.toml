@@ -10,9 +10,9 @@ default-run = "verishda-standalone"
 name = "verishda-standalone"
 path = "src/bin/standalone.rs"
 
-#[[bin]]
-#name = "verishda-shuttle"
-#path = "src/bin/shuttle.rs"
+[[bin]]
+name = "verishda"
+path = "src/bin/shuttle.rs"
 
 [dependencies]
 # date and time
