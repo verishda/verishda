@@ -1,0 +1,121 @@
+import { StandardTableView , HorizontalBox, VerticalBox, ComboBox} from "std-widgets.slint";
+
+
+export struct PersonModel {
+    name: string,
+    is_self: bool,
+    is_present: bool,
+    announced: [bool],
+}
+
+export struct SiteModel {
+    name: string,
+    id: string,
+}
+
+component NameDisplay inherits HorizontalLayout {
+    in property <PersonModel> person;
+
+    Text {
+        horizontal-alignment: left;
+        vertical-alignment: center;
+        text: person.name;
+        font-italic: person.is_self;
+    }
+}
+
+component PresenceCell inherits VerticalLayout {
+    width: 30px;
+}
+
+component PresenceHeaderCell inherits PresenceCell {
+    in property <string> text;
+
+    Text {
+        horizontal-alignment: center;
+        text: parent.text;
+    }
+}
+
+component PresenceItem inherits PresenceCell{
+    in property <bool> is_present;
+    in property <bool> is_announced;
+
+    Text {
+        horizontal-alignment: center;
+        text: is-present ? "P" : 
+            is-announced ? "A" : "-"
+        ;
+    }
+}
+
+component PresenceGrid {
+    in property <[PersonModel]> persons;
+    in property <int> current_day_index;
+
+    property <[string]> day_names: [@tr("Mo"), @tr("Tu"), @tr("We"), @tr("Th"), @tr("Fr"), @tr("Sa"), @tr("Su")];
+
+    function day_index(day_offset: int) -> int {
+        Math.mod(day_offset + current-day-index, 7)
+    }
+
+    VerticalLayout {
+        HorizontalLayout {
+            alignment: end;
+            for day_offset in 7: PresenceHeaderCell {
+                alignment: end;
+                text: day_names[day_index(day_offset)];
+            }
+        }
+        for p in persons: HorizontalLayout {
+            NameDisplay {
+                person: p;
+            }
+        
+            for day_offset in 7: PresenceItem {
+                is_present: day_offset == 0 && p.is_present;
+                is-announced: p.announced[day-offset];
+            }
+        }
+    }
+}
+
+
+component SitePresenceView inherits Window {
+
+    in property <[PersonModel]> persons: [
+        {name: "Uwe Pachler", is-present: true, is_self: true},
+        {name: "Horst Cresi", announced: [false, true, false, false, true]},
+        {name: "Brian Nürnberg"},
+    ];
+
+    in property <[string]> sites: [
+        "Stuttgart",
+        "Reutlingen",
+        "Jeverstrasse",
+    ];
+
+    in property <bool> loading: false;
+
+    out property <int> selected_site_index;
+
+    VerticalLayout { 
+        alignment: start;
+        site_combo := ComboBox {
+            model: sites;
+        }
+
+        if persons.length > 0:
+            PresenceGrid {
+                // example data; this will have to be set in code later
+                current-day-index: 6;
+                persons: persons;
+            }
+        
+        if persons.length == 0:
+            Text{
+                text: @tr("No people registered at site");
+                horizontal-alignment: center;
+            }
+    }    
+}

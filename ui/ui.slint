@@ -1,0 +1,35 @@
+import { CheckBox , TextEdit, VerticalBox, HorizontalBox, Button, LineEdit } from "std-widgets.slint";
+
+export component WelcomeWindow inherits Window {
+    VerticalLayout {
+        Image {
+            source: @image-url("verishda-logo.png");
+            width: 300px;
+        }
+        Text {
+            text: "With Verisha, share with your friends when you're at a favourite place. Let them know when you hang out at your favourite cafe, or make your coworkers aware you're at the office.\n\nPlease choose how to connect to a Verishda network:";
+            wrap: word-wrap;
+        }
+        
+        haveCodeCheckBox := CheckBox {
+            text: "I have an invitation code";
+        }
+        
+        if haveCodeCheckBox.checked : VerticalBox {
+            LineEdit {
+                placeholder-text: "xxx-xxx-xxx-xxx";
+            }
+            Button {
+                text: "Use Code";
+            }
+        } 
+       
+        if !haveCodeCheckBox.checked : HorizontalBox {
+           
+            visible: !haveCodeCheckBox.checked;
+            Button {
+                text: "Login / Create Account";
+            }
+        }
+    }
+}
