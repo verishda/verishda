@@ -1,6 +1,21 @@
 import { CheckBox , TextEdit, VerticalBox, HorizontalBox, Button, LineEdit } from "std-widgets.slint";
 
-export component WelcomeWindow inherits Window {
+import { SitePresenceView } from "mainview.slint";
+
+enum MainWindowState {
+    ShowingWelcomeView,
+    ShowingSitePresenceView,
+}
+
+export global AppUI {
+    pure callback login_triggered();
+
+    in property <MainWindowState> state: MainWindowState.ShowingWelcomeView;
+}
+
+component WelcomeView {
+
+
     VerticalLayout {
         Image {
             source: @image-url("verishda-logo.png");
@@ -29,7 +44,22 @@ export component WelcomeWindow inherits Window {
             visible: !haveCodeCheckBox.checked;
             Button {
                 text: "Login / Create Account";
+                clicked => {
+                    AppUI.login-triggered();
+                }
             }
         }
     }
+}
+
+export component MainWindow inherits Window {
+    
+    if AppUI.state == MainWindowState.ShowingWelcomeView:
+        welcome_view := WelcomeView {
+
+        }
+    if AppUI.state == MainWindowState.ShowingSitePresenceView: 
+        site_presence_view := SitePresenceView {}
+
+    
 }

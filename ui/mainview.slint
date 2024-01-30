@@ -1,6 +1,5 @@
 import { StandardTableView , HorizontalBox, VerticalBox, ComboBox} from "std-widgets.slint";
 
-
 export struct PersonModel {
     name: string,
     is_self: bool,
@@ -81,7 +80,7 @@ component PresenceGrid {
 }
 
 
-component SitePresenceView inherits Window {
+export component SitePresenceView inherits Window {
 
     in property <[PersonModel]> persons: [
         {name: "Uwe Pachler", is-present: true, is_self: true},
