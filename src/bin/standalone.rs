@@ -1,16 +1,27 @@
 
 use dotenv::dotenv;
 use sqlx::postgres::PgPoolOptions;
-use tokio::main;
+use anyhow::*;
+use verishda::config::Config;
 
 fn init_dotenv() {
-    if let Ok(path) = dotenv() {
+    if let Result::Ok(path) = dotenv() {
         let path = path.to_string_lossy();
         println!("additional environment variables loaded from {path}");
     }
 }
 
+#[derive(Clone)]
+struct EnvConfig;
 
+impl Config for EnvConfig{
+    fn get(&self, key: &str) -> Result<String> {
+        std::env::var(key).map_err(|_| anyhow!("no such environment variable {key}"))
+    }
+    fn clone_box_dyn(&self) -> Box<dyn Config> {
+        Box::new(self.clone())
+    }
+}
 
 #[tokio::main]
 async fn main(){
@@ -18,17 +29,20 @@ async fn main(){
     println!("starting {executable_name}...");
 
     init_dotenv();
-    verishda::init_logging();
+
+
+    let config = EnvConfig;
+    verishda::init_logging(config.clone());
 
     log::debug!("connecting to database...");
-    let pg_address = verishda::config::get("pg_address")
+    let pg_address = std::env::var("PG_ADDRESS")
     .expect("no postgres database connection configured, set PG_ADDRESS variable");
     let pool = PgPoolOptions::new()
         .connect(&pg_address).await.expect(&format!("could not connect to database {pg_address}"));
     
-    let router = verishda::build_router(pool);
+    let router = verishda::build_router(pool, config.clone());
     
-    let bind_address = verishda::config::get("bind_address")
+    let bind_address = std::env::var("BIND_ADDRESS")
     .unwrap_or_else(|_|"127.0.0.1:3000".to_string())
     .parse()
     .unwrap();

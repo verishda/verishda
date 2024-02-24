@@ -2763,6 +2763,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "secrecy"
+version = "0.8.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9bd1c54ea06cfd2f6b63219704de0b9b4f72dcc2b8fdef820be6cd799780e91e"
+dependencies = [
+ "serde",
+ "zeroize",
+]
+
+[[package]]
 name = "security-framework"
 version = "2.8.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2958,9 +2968,9 @@ dependencies = [
 
 [[package]]
 name = "shuttle-common"
-version = "0.34.0"
+version = "0.34.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9264106f4bff88034fe57655a9e1bbd8ab5de91d6796f3c95197ef9ab81bcb48"
+checksum = "d0406c689a1edb0d12bd813d2b245619752ce0ad6122dad35c3f08ffccd2a40c"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -3038,10 +3048,22 @@ dependencies = [
 ]
 
 [[package]]
-name = "shuttle-service"
-version = "0.34.0"
+name = "shuttle-secrets"
+version = "0.34.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2cf8dc69c29252cbd7052d49682adfd47b82530c226a3c7e884b34bf9244feac"
+checksum = "f0e0269b915526626e515996f77f68b433defc3be35221da87ed3eea4dce25a4"
+dependencies = [
+ "async-trait",
+ "secrecy",
+ "serde",
+ "shuttle-service",
+]
+
+[[package]]
+name = "shuttle-service"
+version = "0.34.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b1c89dbd86fb79a791587317252daac5aa5026ed6fd73ce9f458acd30245bb13"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -4060,6 +4082,7 @@ dependencies = [
  "serde_json",
  "shuttle-axum",
  "shuttle-runtime",
+ "shuttle-secrets",
  "shuttle-shared-db",
  "sqlx",
  "swagger-ui",

@@ -7,6 +7,7 @@ use axum::extract::{OriginalUri, Host, FromRef, State};
 use axum::{Router, routing::{get, post, put}, response::{Response, IntoResponse, Redirect, Html}, Json, body::{Full, Empty}, extract::{Path, FromRequestParts, rejection::TypedHeaderRejectionReason}, async_trait, TypedHeader, headers::{Authorization, authorization::Bearer}, RequestPartsExt, Extension};
 
 use bytes::Bytes;
+use config::Config;
 use error::HandlerError;
 use http::{StatusCode, request::Parts};
 use memory_store::MemoryStore;
@@ -40,8 +41,23 @@ mod scheme;
 
 const SWAGGER_SPEC_URL: &str = "/api/public/openapi.yaml";
 
-pub fn init_logging() {
-    let rust_log_config = config::get("rust_log").ok();
+struct VerishdaState
+where Self: Send + Sync + Clone
+{
+    pool: Pool<Postgres>,
+    config: Box<dyn Config>,
+}
+impl Clone for VerishdaState {
+    fn clone(&self) -> Self {
+        Self {
+            pool: self.pool.clone(),
+            config: self.config.clone_box_dyn(),
+        }
+    }
+}
+
+pub fn init_logging(cfg: impl config::Config) {
+    let rust_log_config = cfg.get("rust_log").ok();
     let mut logger_builder = env_logger::builder();
     if let Some(rust_log) = rust_log_config {
         logger_builder.parse_filters(&rust_log);
@@ -54,6 +70,12 @@ pub fn init_logging() {
 }
 
 type ConnectionPool = Pool<Postgres>;
+impl FromRef<VerishdaState> for ConnectionPool {
+    fn from_ref(state: &VerishdaState) -> Self {
+        state.pool.clone()
+    }
+}
+
 struct DbCon(PoolConnection<Postgres>);
 impl Deref for DbCon {
     type Target = PoolConnection<Postgres>;
@@ -92,8 +114,9 @@ where
     (StatusCode::INTERNAL_SERVER_ERROR, err.to_string())
 }
 
-pub fn build_router(pool: Pool<Postgres>) -> Router
+pub fn build_router(pool: Pool<Postgres>, config: impl config::Config) -> Router
 {
+    let state = VerishdaState { pool, config: config.clone_box_dyn()  };
     return Router::new()
     .route(SWAGGER_SPEC_URL, get(handle_get_swagger_spec))
     .route("/api/public/swagger-ui/:path", get(handle_get_swagger_ui))
@@ -104,7 +127,7 @@ pub fn build_router(pool: Pool<Postgres>) -> Router
     .route("/", get(handle_get_fallback))
     .route("/*path", get(handle_get_fallback))
     .layer(Extension(MemoryStore::new()))
-    .with_state(pool)
+    .with_state(state)
 
 }
 
@@ -150,7 +173,9 @@ async fn handle_get_swagger_ui(Path(path): Path<String>) -> Result<Response<Full
 }
 
 #[debug_handler]
-async fn handle_get_sites_siteid_presence(DbCon(mut con): DbCon, _: State<ConnectionPool>, _auth_info: AuthInfo, Path(site_id): Path<String>) -> Result<Json<Vec<Presence>>, HandlerError> {
+async fn handle_get_sites_siteid_presence(DbCon(mut con): DbCon, _: State<VerishdaState>, _auth_info: AuthInfo, Path(site_id): Path<String>) -> Result<Json<Vec<Presence>>, HandlerError> 
+
+{
     let presences = site::get_presence_on_site(&mut con, &site_id).await?;
     Ok(Json(presences))
 }
@@ -165,8 +190,8 @@ fn to_logged_as_name(auth_info: &AuthInfo) -> String {
     .to_string()
 }
 
-#[debug_handler]
-async fn handle_post_sites_siteid_hello(mut dbcon: DbCon, s: State<ConnectionPool>, auth_info: AuthInfo, Path(site_id): Path<String>, _: State<ConnectionPool>) -> Result<Json<Vec<Presence>>, HandlerError> {
+#[debug_handler(state=VerishdaState)]
+async fn handle_post_sites_siteid_hello(mut dbcon: DbCon, s: State<VerishdaState>, auth_info: AuthInfo, Path(site_id): Path<String>, _: State<ConnectionPool>) -> Result<Json<Vec<Presence>>, HandlerError> {
 
     let logged_as_name = to_logged_as_name(&auth_info);
     site::hello_site(&mut dbcon.0, &auth_info.subject, &logged_as_name, &site_id).await?;
@@ -178,7 +203,7 @@ async fn handle_post_sites_siteid_hello(mut dbcon: DbCon, s: State<ConnectionPoo
 }
 
 #[debug_handler]
-async fn handle_put_announce(DbCon(mut con): DbCon, _: State<ConnectionPool>, auth_info: AuthInfo, Path(site_id): Path<String>, Json(announcements): Json<Vec<PresenceAnnouncement>>) -> Result<impl IntoResponse, HandlerError> {
+async fn handle_put_announce(DbCon(mut con): DbCon, _: State<VerishdaState>, auth_info: AuthInfo, Path(site_id): Path<String>, Json(announcements): Json<Vec<PresenceAnnouncement>>) -> Result<impl IntoResponse, HandlerError> {
 
     site::announce_presence_on_site(&mut con, &auth_info.subject, &site_id, &to_logged_as_name(&auth_info), &announcements).await?;
 
@@ -189,24 +214,23 @@ async fn handle_put_announce(DbCon(mut con): DbCon, _: State<ConnectionPool>, au
 }
 
 #[debug_handler]
-async fn handle_get_sites(DbCon(mut con): DbCon, State(_state): State<ConnectionPool>, _auth_info: AuthInfo) -> Result<Json<Vec<Site>>, HandlerError> {
+async fn handle_get_sites(DbCon(mut con): DbCon, State(_state): State<VerishdaState>, _auth_info: AuthInfo) -> Result<Json<Vec<Site>>, HandlerError> {
     let sites = site::get_sites(&mut con).await?;
     Ok(Json(sites))
 }
 
 #[async_trait]
-impl<S> FromRequestParts<S> for AuthInfo
+impl FromRequestParts<VerishdaState> for AuthInfo
 where
-    S: Send + Sync,
 {
     type Rejection = AuthError;
 
-    async fn from_request_parts(parts: &mut Parts, _state: &S) -> Result<Self, Self::Rejection> {
+    async fn from_request_parts(parts: &mut Parts, state: &VerishdaState) -> Result<Self, Self::Rejection> {
         trace!("checking authorization...");
         
         
         let mut ox = oidc::OidcExtension::default();
-        let issuer_url = config::get("issuer_url").or(Err(AuthError::ConfigurationError(anyhow!("issuer_url not defined. Use a URL that can serve as a base URL for OIDC discovery"))))?;
+        let issuer_url = state.config.get("ISSUER_URL").or(Err(AuthError::ConfigurationError(anyhow!("ISSUER_URL not defined. Use a URL that can serve as a base URL for OIDC discovery"))))?;
         let store = parts.extensions.get::<MemoryStore>().expect("memory store not set");
         let cache = MetadataCache::new(store.clone());
         if let Err(e) = ox.init(cache, &issuer_url).await {

@@ -1,7 +1,8 @@
 
 use anyhow::Result;
 
-pub fn get(key: &str) -> Result<String> {
-    let key = key.to_uppercase();
-    Ok(std::env::var(key)?)
+
+pub trait Config: Send + Sync{
+    fn get(&self, key: &str) -> Result<String>;
+    fn clone_box_dyn(&self) -> Box<dyn Config>;
 }
