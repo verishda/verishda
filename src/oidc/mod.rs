@@ -67,7 +67,7 @@ impl OidcExtension {
                 Some(m) => m,
                 None => {
                     let m = fetch_metadata(issuer_url).await?;
-                    cache.set(OIDC_METADATA_KEY, m.clone());
+                    cache.set(OIDC_METADATA_KEY, m.clone())?;
                     m
                 }
             };

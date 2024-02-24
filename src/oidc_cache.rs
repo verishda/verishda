@@ -1,7 +1,7 @@
 use std::ops::Add;
 use std::time::{SystemTime, UNIX_EPOCH, Duration};
 
-use log::{trace, error};
+use log::trace;
 use openidconnect::core::CoreJsonWebKeySet;
 
 use openidconnect::core::CoreProviderMetadata;

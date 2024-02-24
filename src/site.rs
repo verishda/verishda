@@ -3,10 +3,8 @@ use std::collections::HashMap;
 use anyhow::Result;
 use serde::{Serialize, Deserialize};
 use chrono::NaiveDate;
-use sqlx::{Connection, pool::PoolConnection, Postgres, PgConnection, postgres::PgRow, Row};
+use sqlx::{Connection, Postgres, PgConnection, postgres::PgRow, Row};
 
-
-use crate::DbCon;
 
 #[derive(Serialize)]
 pub(super) struct Site 

@@ -2,7 +2,6 @@ use std::cell::OnceCell;
 use std::ops::{Deref, DerefMut};
 
 use anyhow::{anyhow, Result};
-use axum::body::{Body, HttpBody};
 use axum::debug_handler;
 use axum::extract::{OriginalUri, Host, FromRef, State};
 use axum::{Router, routing::{get, post, put}, response::{Response, IntoResponse, Redirect, Html}, Json, body::{Full, Empty}, extract::{Path, FromRequestParts, rejection::TypedHeaderRejectionReason}, async_trait, TypedHeader, headers::{Authorization, authorization::Bearer}, RequestPartsExt, Extension};
@@ -11,7 +10,6 @@ use bytes::Bytes;
 use error::HandlerError;
 use http::{StatusCode, request::Parts};
 use memory_store::MemoryStore;
-use dotenv::dotenv;
 
 use site::{PresenceAnnouncement, Site, Presence};
 use log::{trace, error};
@@ -236,9 +234,6 @@ where
     }
 }
 
-fn status400(msg: &str) -> Response {
-    status_html_of(StatusCode::BAD_REQUEST, msg)
-}
 
 enum AuthError {
     TokenMissing,

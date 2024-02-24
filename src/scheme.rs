@@ -1,6 +1,5 @@
-use axum::{async_trait, extract::FromRequestParts, response::IntoResponse, body::{BoxBody, Full, Empty}};
-use bytes::Bytes;
-use http::{StatusCode, request::Parts};
+use axum::{async_trait, extract::FromRequestParts};
+use http::request::Parts;
 
 
 /// Extractor which resolves the URI scheme used for the request.
