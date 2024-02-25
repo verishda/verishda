@@ -2,65 +2,59 @@
 
 ## build
 
-The server is built using [spin](https://developer.fermyon.com/spin), Fermyon's wasm runtime.
+This server supports two modes and therefore builds two binaries:
+* `verishda`: an application designed to run in the (Shuttle)[https://shuttle.rs]  hosting environment
+* `verishda-standalone`: a standalone server application, suitable for running without shuttle
 
-Install spin as [described here](https://developer.fermyon.com/spin/install#installing-spin), then run:
 
+
+## Deploy on Shuttle
+
+You need to signup to shuttle and create a project (here)[https://console.shuttle.rs/login?from=%2F] (Github account required) and deploy it using
 ```bash
-spin build
+cargo shuttle project deploy
 ```
 
-## deploy
+Beware: you need to configure your server first!
 
-to run locally, use
-```bash
-spin up
-```
+## Configure
 
-However, if you want to use [fermyon cloud](https://cloud.fermyon.com/) (free for small workloads), you'll need to get an account there first. Then, use
-
-```
-spin deploy
-```
-
-## configure
-
-The verishda server is configured using [spin Application variables](https://developer.fermyon.com/spin/variables). 
+The verishda server is configured using environment variables (or Shuttle secrets, which work the same way)
 
 We need the following configuration variables:
-* `pg_address`: the URL to reach the Postgres database. Note that the database must have beein initialized with the `create_tables.sql` script in the root dir. 
-* `issuer_url`: The issuer URL of the OpenID service to use (tested: [Keycloak](https://www.keycloak.org))
-* `rust_log`: Optional logging configuration. If provided, contains a string describing the logging settings. See the [`env_logger` create documenation](https://docs.rs/env_logger/latest/env_logger/#enabling-logging) for details.
+* `PG_ADDRESS`: the URL to reach the Postgres database. Note that the database must have beein initialized with the `create_tables.sql` script in the root directory. Not used when deployed in Shuttle, as they provide the DB connection directly - otherwise REQUIRED.
+* `ISSUER_URL`: The issuer URL of the OpenID service to use (tested: [Keycloak](https://www.keycloak.org)). The issuer URL can be found in the `.well-known` auto-config URL that OpenID identity servers provide. REQUIRED.
+* `RUST_LOG`: Logging configuration. If provided, contains a string describing the logging settings. See the [`env_logger` create documenation](https://docs.rs/env_logger/latest/env_logger/#enabling-logging) for details. OPTIONAL
+* `FORWARDED_PROTO`: When configured behind a reverse proxy that terminates TLS, this option can override the calling URI scheme detection. Not needed if the reverse proxy sets the `X-Forwarded-Proto` header. When deploying to Shuttle hosting, set to `https` (but don't set it when testing the shuttle app locally).
 
-In order to use the `swagger-ui` built into the server, you'll need to create a client (for Keycloak, this is described [here](https://www.keycloak.org/docs/latest/server_admin/index.html#_oidc_clients)). In this guide, we'll assume you called the client 'swagger' (but you can call it anything you want). Also make sure that you'll add `<base-url>/api/public/*` as a redirection URL. So if you're running the server on `localhost:3000` for local development with spin, the redirect URL is `http://localhost:3000/api/public/*`.
-In Fermyon Cloud, this could for instance be `https://verishda.fermyon.app:3000/api/public/*`
+In order to use the `swagger-ui` built into the server, you'll need to create a client (for Keycloak, this is described [here](https://www.keycloak.org/docs/latest/server_admin/index.html#_oidc_clients)). In this guide, we'll assume you called the client 'swagger' (but you can call it anything you want). Also make sure that you'll add `<base-url>/api/public/*` as a redirection URL. So if you're running the server on `localhost:3000` for local development, the redirect URL is `http://localhost:3000/api/public/*`.
+In Shuttle, this could for instance be `https://verishda.shuttleapp.rs/api/public/*`
 
-### Fermyon Cloud
-To set these variables, you'll need to run shell commands like these:
+### Shuttle Configuration
+Before deploying to shuttle (see above), create a Shuttle secrets file:
+* `Secrets.dev.toml` contains the config variables for local development
+* `Secrets.toml` for the config variables used when deploying to Shuttle's cloud offering
 
-```sh
-# the app is names 'verishda-server' in our spin.toml
-
-# set the database
-spin cloud variables set --app verishda-server pg_address="postgres://user:password@host/dbname"
-# set the issuer url, pointing at a keycloak instance - this is used to fetch more config via OIDC discovery
-spin cloud variables set --app verishda-server issuer_url="https://mykeycloak/auth/realms/myrealm" 
+The config variables are simply written into the file. Remember to use quotes for the values:
+```
+ISSUER_URL='https://path.to/identity-server'
+FORWARDED_PROTO='https'
 ```
 
-### Local Development
-When running spin locally, spin can read the variables from a `.env` file as environment variables. Even though spin variables are _not_ environment variables, there is a mapping from envrionment variables to spin variables such that an environment variables names starting with `SPIN_CONFIG_` will be stripped of the prefix and lowercased and is then visible under that name as a spin variable, so `SPIN_CONFIG_FOO` is then visible to the application as spin variable `foo`.
+### Configuration for standalone apps
+When running standalone, the server can read the variables from a `.env` file as environment variables. 
 
 In essence, create a .env file like this:
 ```sh
 # replace '...' with OpenID Connect issuer URL to allow of OpenID Connect Discovery
-SPIN_CONFIG_PG_ADDRESS=...
+ISSUER_URL=...
 
 # replace '...' with Postgres URL, which must also include the credentials
-SPIN_CONFIG_ISSUER_URL=...
+PG_ADDRESS=...
 
 # if enabled (remove comment), the format for the logging config is defined here:
 # https://docs.rs/env_logger/latest/env_logger/#enabling-logging
-#SPIN_RUST_LOG=...
+#RUST_LOG=...
 ```
 
 ## Try in Swagger-UI

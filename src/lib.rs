@@ -57,7 +57,7 @@ impl Clone for VerishdaState {
 }
 
 pub fn init_logging(cfg: impl config::Config) {
-    let rust_log_config = cfg.get("rust_log").ok();
+    let rust_log_config = cfg.get("RUST_LOG").ok();
     let mut logger_builder = env_logger::builder();
     if let Some(rust_log) = rust_log_config {
         logger_builder.parse_filters(&rust_log);
@@ -131,7 +131,7 @@ pub fn build_router(pool: Pool<Postgres>, config: impl config::Config) -> Router
 
 }
 
-#[debug_handler]
+#[debug_handler(state=VerishdaState)]
 async fn handle_get_fallback(Scheme(scheme): Scheme, Host(host): Host, OriginalUri(path): OriginalUri) -> Result<Redirect, HandlerError> {
     let full_url = format!("{scheme}://{host}{path}");
     trace!("full_url: {full_url}");

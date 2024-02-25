@@ -1,5 +1,6 @@
 use axum::{async_trait, extract::FromRequestParts};
 use http::request::Parts;
+use crate::VerishdaState;
 
 
 /// Extractor which resolves the URI scheme used for the request.
@@ -11,16 +12,26 @@ pub struct Scheme(pub String);
 
 
 #[async_trait]
-impl<S> FromRequestParts<S> for Scheme
-where
-    S: Send + Sync,
+impl FromRequestParts<VerishdaState> for Scheme
 {
     type Rejection = ();
 
-    async fn from_request_parts(parts: &mut Parts, _state: &S) -> Result<Self, Self::Rejection> {
-        match parts.headers.get("X-Forwarded-Proto") {
-            Some(x_forwarded_proto) => Ok(Self(x_forwarded_proto.to_str().unwrap_or("http").into())),
-            None => Ok(Self("http".to_string()))
-        }    
+    async fn from_request_parts(parts: &mut Parts, state: &VerishdaState) -> Result<Self, Self::Rejection> {
+        let mut detected_scheme = None;
+        if let Ok(forwared_proto_config) = state.config.get("FORWARDED_PROTO") {
+            detected_scheme = Some(forwared_proto_config);
+        }
+        if detected_scheme.is_none() {
+            if let Some(x_forwarded_proto) = parts.headers.get("X-Forwarded-Proto") {
+                detected_scheme = x_forwarded_proto.to_str().ok().map(|s| s.to_string());
+            }
+        }
+
+        let scheme = match detected_scheme {
+            Some(s) => s.to_string(),
+            None => "http".to_string()
+        };
+        
+        Ok(Self(scheme))
     }
 }
