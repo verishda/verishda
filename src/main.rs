@@ -10,6 +10,9 @@ fn main() {
         // MISSING: actual login via OIDC & Browser
         main_window_weak.unwrap().global::<AppUI>().set_state(MainWindowState::ShowingSitePresenceView);
     });
-    main_window.run().unwrap();
 
+    main_window.show().unwrap();
+
+    // NOT: will need to change to slint::run_event_loop_until_quit() when we have a systray icon
+    slint::run_event_loop().unwrap();
 }
