@@ -1,8 +1,9 @@
-import { CheckBox , TextEdit, VerticalBox, HorizontalBox, Button, LineEdit } from "std-widgets.slint";
+import { CheckBox , TextEdit, VerticalBox, HorizontalBox, Button, LineEdit, ProgressIndicator } from "std-widgets.slint";
 
 import { SitePresenceView } from "mainview.slint";
 
 enum MainWindowState {
+    FetchingProviderMetadata,
     ShowingWelcomeView,
     ShowingSitePresenceView,
 }
@@ -10,9 +11,21 @@ enum MainWindowState {
 export global AppUI {
     pure callback login_triggered();
 
-    in property <MainWindowState> state: MainWindowState.ShowingWelcomeView;
+    in property <MainWindowState> state: MainWindowState.FetchingProviderMetadata;
 }
 
+
+component FetchProviderMetaView {
+    VerticalBox {
+        Text {
+            text: "Fetching provider metadata...";
+        }
+        ProgressIndicator {
+            height: 20px;
+            indeterminate: true;
+        }
+    }
+}
 component WelcomeView {
 
 
@@ -54,6 +67,11 @@ component WelcomeView {
 
 export component MainWindow inherits Window {
     
+    if AppUI.state == MainWindowState.FetchingProviderMetadata:
+        fetch_view := FetchProviderMetaView {
+
+        }
+
     if AppUI.state == MainWindowState.ShowingWelcomeView:
         welcome_view := WelcomeView {
 
