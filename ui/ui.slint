@@ -68,14 +68,11 @@ component WelcomeView {
 export component MainWindow inherits Window {
     
     if AppUI.state == MainWindowState.FetchingProviderMetadata:
-        fetch_view := FetchProviderMetaView {
-
-        }
+        fetch_view := FetchProviderMetaView {}
 
     if AppUI.state == MainWindowState.ShowingWelcomeView:
-        welcome_view := WelcomeView {
-
-        }
+        welcome_view := WelcomeView {}
+        
     if AppUI.state == MainWindowState.ShowingSitePresenceView: 
         site_presence_view := SitePresenceView {}
 

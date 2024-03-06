@@ -8,7 +8,6 @@ use anyhow::Result;
 // https://brockallen.com/2018/01/20/native-oidc-client-sample-for-windows-that-uses-custom-uri-scheme-handler/
 
 use std::env;
-use std::path::PathBuf;
 
 const ROOT_KEY_PATH: &str = "Software\\Classes";
 const CUSTOM_URI_SCHEME_KEY_VALUE_NAME: &str = "";
@@ -19,10 +18,6 @@ const COMMAND_KEY_VALUE_NAME: &str = "";
 const URL_PROTOCOL_VALUE_NAME: &str = "URL Protocol";
 const URL_PROTOCOL_VALUE_VALUE: &str = "";
 
-
-pub fn startup() {
-    register_custom_uri_scheme().unwrap();
-}
 
 fn custom_uri_scheme_key_path(custom_uri_scheme: &str) -> String {
     format!("{}\\{}", ROOT_KEY_PATH, custom_uri_scheme)
@@ -40,9 +35,9 @@ fn command_key_value_value() -> String {
     let current_exe = env::current_exe().unwrap();
     format!( "\"{}\" \"%1\"", current_exe.to_str().unwrap())
 }
-fn register_custom_uri_scheme() -> Result<()> {
+pub (crate) fn register_custom_uri_scheme(uri_scheme: &str) -> Result<()> {
 
-    let custom_uri_scheme = "verishda-slint";
+    let custom_uri_scheme = uri_scheme;
 
     let hkcu = RegKey::predef(HKEY_CURRENT_USER);
     let classes_key = hkcu.open_subkey_with_flags(ROOT_KEY_PATH, KEY_ALL_ACCESS).unwrap();
