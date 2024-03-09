@@ -65,7 +65,6 @@ fn ui_main() {
     appui.on_login_cancelled(move||{
         cancel_login(app_core_clone.clone(), main_window_weak.clone());
     });
-    ;
 
     main_window.show().unwrap();
 
@@ -95,13 +94,13 @@ fn start_fetch_provider_metadata(main_window: Weak<MainWindow>, app_core: Arc<Mu
 }
 
 fn start_login(app_core: Arc<Mutex<AppCore>>, main_window_weak: Weak<MainWindow>) {
-    let auth_url = if let Ok(auth_url) = app_core.blocking_lock().start_login() {
+    let auth_url = if let Ok(auth_url) = AppCore::start_login(app_core.clone()) {
         auth_url
     } else {
         eprintln!("Failed to start login");
         return
     };
-    if let Err(e) = platform::open_url(&auth_url) {
+    if let Err(e) = platform::open_url(&auth_url.to_string()) {
         eprintln!("Failed to open URL: {}", e);
     }
 

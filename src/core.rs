@@ -1,17 +1,23 @@
+use std::sync::Arc;
+
 use futures::prelude::*;
-use openidconnect::{core::{CoreAuthenticationFlow, CoreClient, CoreProviderMetadata}, http::uri, reqwest::async_http_client, ClientId, CsrfToken, IssuerUrl, Nonce, PkceCodeChallenge, RedirectUrl};
+use openidconnect::{core::{CoreAuthenticationFlow, CoreClient, CoreProviderMetadata}, reqwest::async_http_client, AuthorizationCode, ClientId, CsrfToken, IssuerUrl, Nonce, OAuth2TokenResponse, PkceCodeChallenge, PkceCodeVerifier, RedirectUrl};
 use anyhow::Result;
-use tokio::{io::AsyncWriteExt, net::windows::named_pipe::{ClientOptions, NamedPipeServer, ServerOptions}};
+use tokio::{net::windows::named_pipe::{ClientOptions, NamedPipeServer, ServerOptions}, sync::Mutex};
 use tokio_util::codec::{FramedWrite, FramedRead, LengthDelimitedCodec};
 use tokio_serde::{formats::SymmetricalJson, SymmetricallyFramed};
+use url::Url;
 
+struct Credentials {
+    access_token: String,
+    refresh_token: String,
+}
 
 #[derive(Default)]
 pub struct AppCore {
     oidc_metadata: Option<CoreProviderMetadata>,
     oidc_client: Option<CoreClient>,
-    credentials: Option<()>,    // MISSING: actual credentials
-    login_pipe_server: Option<NamedPipeServer>,
+    credentials: Option<Credentials>,
 }
 
 #[derive(serde::Serialize, serde::Deserialize)]
@@ -45,18 +51,22 @@ impl AppCore {
         format!("\\\\.\\pipe\\{}", Self::uri_scheme())
     }
 
-    pub fn start_login(&mut self) -> Result<String> {
+    pub fn start_login<F>(app_core: Arc<Mutex<AppCore>>, finished_callback: F) -> Result<Url> 
+    where F: FnOnce(Result<()>) + Send + 'static
+    {
+        let (auth_url, pkce_verifier) = app_core.blocking_lock().authorization_url();
+
         // start named pipe server
         let pipe_server = ServerOptions::new()
             .first_pipe_instance(true)
             .create(Self::pipe_name())?;
-
-        //self.login_pipe_server = Some(pipe_server);
         
         tokio::spawn(async move {
-            Self::read_login_pipe_message(pipe_server).await;            
+            if let Err(e) = Self::read_login_pipe_message(app_core, pkce_verifier, pipe_server).await {
+                eprintln!("Error reading login pipe message: {}", e);
+            }
         });
-        Ok(self.authorization_url())
+        Ok(auth_url)
     }
 
     pub fn cancel_login(&mut self) {
@@ -75,7 +85,7 @@ impl AppCore {
         Ok(())
     }
 
-    async fn read_login_pipe_message(mut pipe_server: NamedPipeServer) -> Result<()> {
+    async fn read_login_pipe_message(app_core: Arc<Mutex<AppCore>>, pkce_verifier: PkceCodeVerifier, mut pipe_server: NamedPipeServer) -> Result<()> {
         pipe_server.connect().await?;
 
         let frame = FramedRead::new(&mut pipe_server, LengthDelimitedCodec::new());
@@ -88,12 +98,28 @@ impl AppCore {
                     }
                     LoginPipeMessage::HandleRedirect{code} => {
                         println!("Received authorization code: {}", code);
+                        let (access_token, refresh_token) = Self::exchange_code_for_tokens(app_core.clone(), code, pkce_verifier).await?;
+                        println!("Exchanged into access_token {access_token}");
+                        app_core.lock().await.credentials = Some(Credentials {access_token, refresh_token});
+                        
                         break;
                     }
                 }
             }
         }
         Ok(())
+    }
+
+    async fn exchange_code_for_tokens(app_core: Arc<Mutex<AppCore>>, code: String, pkce_verifier: PkceCodeVerifier) -> Result<(String, String)> {
+        let app_core = app_core.lock().await;
+        let client = app_core.oidc_client.as_ref().unwrap();
+        let token_response = client.exchange_code(AuthorizationCode::new(code))
+            .set_pkce_verifier(pkce_verifier)
+            .request_async(async_http_client)
+            .await?;
+        let access_token = token_response.access_token().secret().to_string();
+        let refresh_token = token_response.refresh_token().unwrap().secret().to_string();
+        Ok((access_token, refresh_token))
     }
 
     pub async fn handle_login_redirect(url: &str) -> Result<()> {
@@ -112,22 +138,22 @@ impl AppCore {
         Ok(())
     }
 
-    fn authorization_url(&self) -> String {
+    fn authorization_url(&self) -> (Url, PkceCodeVerifier) {
         // Generate a PKCE challenge.
-    let (pkce_challenge, pkce_verifier) = PkceCodeChallenge::new_random_sha256();
+        let (pkce_challenge, pkce_verifier) = PkceCodeChallenge::new_random_sha256();
 
-    // Generate the full authorization URL.
-    let (auth_url, csrf_token, nonce) = self.oidc_client.as_ref().unwrap()
-        .authorize_url(
-            CoreAuthenticationFlow::AuthorizationCode,
-            CsrfToken::new_random,
-            Nonce::new_random,
-        )
-        // Set the PKCE code challenge.
-        .set_pkce_challenge(pkce_challenge)
-        .url();
+        // Generate the full authorization URL.
+        let (auth_url, csrf_token, nonce) = self.oidc_client.as_ref().unwrap()
+            .authorize_url(
+                CoreAuthenticationFlow::AuthorizationCode,
+                CsrfToken::new_random,
+                Nonce::new_random,
+            )
+            // Set the PKCE code challenge.
+            .set_pkce_challenge(pkce_challenge)
+            .url();
 
-        auth_url.to_string()
+        (auth_url, pkce_verifier)
     }
 
     pub async fn init_provider(&mut self, issuer_url: &str, client_id: &str) -> Result<()>{
