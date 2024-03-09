@@ -33,7 +33,7 @@ fn command_key_path(custom_uri_scheme: &str) -> String {
 
 fn command_key_value_value(redirect_url_param: &str) -> String {
     let current_exe = env::current_exe().unwrap();
-    format!( "\"{}\" {} \"%1\"", redirect_url_param, current_exe.to_str().unwrap())
+    format!( "\"{}\" {} \"%1\"", current_exe.to_str().unwrap(), redirect_url_param)
 }
 pub (crate) fn register_custom_uri_scheme(uri_scheme: &str, redirect_url_param: &str) -> Result<()> {
 

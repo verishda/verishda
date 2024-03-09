@@ -1,4 +1,4 @@
-#![windows_subsystem = "windows"]
+//#![windows_subsystem = "windows"]
 
 use std::sync::Arc;
 use tokio::{net::windows::named_pipe::{self, NamedPipeServer, ServerOptions}, sync::Mutex};
@@ -17,13 +17,34 @@ const PUBLIC_ISSUER_URL: &str = "https://lemur-5.cloud-iam.com/auth/realms/weris
 const PUBLIC_CLIENT_ID: &str = "verishda-windows";
 
 fn main() {
+
+    let args: Vec<String> = std::env::args().collect();
+
     let runtime = tokio::runtime::Runtime::new().unwrap();
 
-    runtime.block_on(async {
-        tokio::task::spawn_blocking(ui_main)
-        .await
-        .unwrap();
-    });
+    // check if we are being called to handle a redirect
+    if let (Some(param), Some(url)) = (args.get(1), args.get(2)) {
+        if param != AppCore::redirect_url_param() {
+            eprintln!("Unknown parameter: {}", param);
+            std::process::exit(1);
+        } else {
+            runtime.block_on(async {
+                match AppCore::handle_login_redirect(url).await {
+                    Ok(()) => std::process::exit(0),
+                    Err(e) => {
+                        eprintln!("Failed to handle login redirect: {}", e);
+                        std::process::exit(2);
+                    }
+                }
+                });
+        }
+    } else {
+        runtime.block_on(async {
+            tokio::task::spawn_blocking(ui_main)
+            .await
+            .unwrap();
+        });    
+    }
 }
 
 fn ui_main() {
