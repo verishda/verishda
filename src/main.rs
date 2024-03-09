@@ -94,7 +94,20 @@ fn start_fetch_provider_metadata(main_window: Weak<MainWindow>, app_core: Arc<Mu
 }
 
 fn start_login(app_core: Arc<Mutex<AppCore>>, main_window_weak: Weak<MainWindow>) {
-    let auth_url = if let Ok(auth_url) = AppCore::start_login(app_core.clone()) {
+    main_window_weak.unwrap().global::<AppUI>().set_state(MainWindowState::ShowingWaitingForLoginView);
+
+    let mw = main_window_weak.clone();
+    let auth_url = if let Ok(auth_url) = AppCore::start_login(app_core.clone(), move |logged_in|{
+        mw.upgrade_in_event_loop(move |main_window: MainWindow|{
+            let app_ui = main_window.global::<AppUI>();
+            if logged_in {
+                app_ui.set_state(MainWindowState::ShowingSitePresenceView);
+            } else {
+                app_ui.set_state(MainWindowState::ShowingWelcomeView);
+            }
+        }).expect("cannot upgrade main window weak reference to strong reference in event loop");
+    
+    }) {
         auth_url
     } else {
         eprintln!("Failed to start login");
@@ -103,8 +116,6 @@ fn start_login(app_core: Arc<Mutex<AppCore>>, main_window_weak: Weak<MainWindow>
     if let Err(e) = platform::open_url(&auth_url.to_string()) {
         eprintln!("Failed to open URL: {}", e);
     }
-
-    main_window_weak.unwrap().global::<AppUI>().set_state(MainWindowState::ShowingWaitingForLoginView);
 }
 
 fn cancel_login(app_core: Arc<Mutex<AppCore>>, main_window: Weak<MainWindow>){

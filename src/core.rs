@@ -52,7 +52,7 @@ impl AppCore {
     }
 
     pub fn start_login<F>(app_core: Arc<Mutex<AppCore>>, finished_callback: F) -> Result<Url> 
-    where F: FnOnce(Result<()>) + Send + 'static
+    where F: FnOnce(bool) + Send + 'static
     {
         let (auth_url, pkce_verifier) = app_core.blocking_lock().authorization_url();
 
@@ -62,9 +62,16 @@ impl AppCore {
             .create(Self::pipe_name())?;
         
         tokio::spawn(async move {
-            if let Err(e) = Self::read_login_pipe_message(app_core, pkce_verifier, pipe_server).await {
-                eprintln!("Error reading login pipe message: {}", e);
-            }
+            let r = Self::read_login_pipe_message(app_core, pkce_verifier, pipe_server).await;
+            let logged_in = match r {
+                Err(e) => {
+                    println!("Error reading login pipe message: {}", e);
+                    false
+                },
+                Ok(logged_in) => logged_in,
+            };
+
+            finished_callback(logged_in);
         });
         Ok(auth_url)
     }
@@ -85,7 +92,7 @@ impl AppCore {
         Ok(())
     }
 
-    async fn read_login_pipe_message(app_core: Arc<Mutex<AppCore>>, pkce_verifier: PkceCodeVerifier, mut pipe_server: NamedPipeServer) -> Result<()> {
+    async fn read_login_pipe_message(app_core: Arc<Mutex<AppCore>>, pkce_verifier: PkceCodeVerifier, mut pipe_server: NamedPipeServer) -> Result<bool> {
         pipe_server.connect().await?;
 
         let frame = FramedRead::new(&mut pipe_server, LengthDelimitedCodec::new());
@@ -94,7 +101,7 @@ impl AppCore {
             if let Some(msg) = reader.try_next().await? {
                 match msg {
                     LoginPipeMessage::Cancel => {
-                        break;
+                        return Ok(false);
                     }
                     LoginPipeMessage::HandleRedirect{code} => {
                         println!("Received authorization code: {}", code);
@@ -102,12 +109,11 @@ impl AppCore {
                         println!("Exchanged into access_token {access_token}");
                         app_core.lock().await.credentials = Some(Credentials {access_token, refresh_token});
                         
-                        break;
+                        return Ok(true);
                     }
                 }
             }
         }
-        Ok(())
     }
 
     async fn exchange_code_for_tokens(app_core: Arc<Mutex<AppCore>>, code: String, pkce_verifier: PkceCodeVerifier) -> Result<(String, String)> {
