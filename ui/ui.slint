@@ -6,10 +6,12 @@ enum MainWindowState {
     FetchingProviderMetadata,
     ShowingWelcomeView,
     ShowingSitePresenceView,
+    ShowingWaitingForLoginView,
 }
 
 export global AppUI {
     pure callback login_triggered();
+    pure callback login_cancelled();
 
     in property <MainWindowState> state: MainWindowState.FetchingProviderMetadata;
 }
@@ -65,6 +67,20 @@ component WelcomeView {
     }
 }
 
+component WaitingForLoginView {
+    VerticalBox {
+        Text {
+            text: "Waiting for login...";
+        }
+        Button {
+            text: "Cancel";
+            clicked => {
+                AppUI.login-cancelled();
+            }
+        }
+    }
+}
+
 export component MainWindow inherits Window {
     
     if AppUI.state == MainWindowState.FetchingProviderMetadata:
@@ -72,6 +88,9 @@ export component MainWindow inherits Window {
 
     if AppUI.state == MainWindowState.ShowingWelcomeView:
         welcome_view := WelcomeView {}
+    
+    if AppUI.state == MainWindowState.ShowingWaitingForLoginView:
+        waiting_for_login_view := WaitingForLoginView {}
         
     if AppUI.state == MainWindowState.ShowingSitePresenceView: 
         site_presence_view := SitePresenceView {}

@@ -31,11 +31,11 @@ fn command_key_path(custom_uri_scheme: &str) -> String {
     format!("{}\\{}\\{}", custom_uri_scheme_key_path(custom_uri_scheme), SHELL_KEY_NAME, OPEN_KEY_NAME)
 }
 
-fn command_key_value_value() -> String {
+fn command_key_value_value(redirect_url_param: &str) -> String {
     let current_exe = env::current_exe().unwrap();
-    format!( "\"{}\" \"%1\"", current_exe.to_str().unwrap())
+    format!( "\"{}\" {} \"%1\"", redirect_url_param, current_exe.to_str().unwrap())
 }
-pub (crate) fn register_custom_uri_scheme(uri_scheme: &str) -> Result<()> {
+pub (crate) fn register_custom_uri_scheme(uri_scheme: &str, redirect_url_param: &str) -> Result<()> {
 
     let custom_uri_scheme = uri_scheme;
 
@@ -48,6 +48,6 @@ pub (crate) fn register_custom_uri_scheme(uri_scheme: &str) -> Result<()> {
     let (shell, _) = root.create_subkey(SHELL_KEY_NAME).unwrap();
     let (open, _) = shell.create_subkey(OPEN_KEY_NAME).unwrap();
     let (command, _) = open.create_subkey(COMMAND_KEY_NAME).unwrap();
-    command.set_value(COMMAND_KEY_VALUE_NAME, &command_key_value_value()).unwrap();
+    command.set_value(COMMAND_KEY_VALUE_NAME, &command_key_value_value(redirect_url_param)).unwrap();
     Ok(())
 }

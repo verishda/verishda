@@ -1,30 +1,50 @@
 use openidconnect::{core::{CoreAuthenticationFlow, CoreClient, CoreProviderMetadata}, http::uri, reqwest::async_http_client, ClientId, CsrfToken, IssuerUrl, Nonce, PkceCodeChallenge, RedirectUrl};
 use anyhow::Result;
+use tokio::net::windows::named_pipe::{NamedPipeServer, ServerOptions};
 
+#[derive(Default)]
 pub struct AppCore {
     oidc_metadata: Option<CoreProviderMetadata>,
     oidc_client: Option<CoreClient>,
     credentials: Option<()>,    // MISSING: actual credentials
+    login_pipe_server: Option<NamedPipeServer>,
 }
 
 impl AppCore {
     pub fn new() -> Self {
-        Self {
-            oidc_metadata: None,
-            oidc_client: None,
-            credentials: None,
-        }
+        Self::default()
     }
 
+    /// The URI scheme name that is used to register the application as a handler for the redirect URL.
     pub fn uri_scheme() -> &'static str {
         "verishda"
+    }
+
+    /// Parameter that introduces the redirect url parameter on the command line.
+    pub fn redirect_url_param() -> &'static str {
+        "--redirect-url"
     }
 
     fn redirect_url(&self) -> String {
         Self::uri_scheme().to_owned() + "://exchange-token"
     }
 
-    pub fn authorization_url(&self) -> String {
+    pub fn start_login(&mut self) -> Result<String> {
+        // start named pipe server
+        let pipe_server = ServerOptions::new()
+            .first_pipe_instance(true)
+            .create(format!(r"\\.\pipe\{}", Self::uri_scheme()))?;
+
+        self.login_pipe_server = Some(pipe_server);
+        
+        Ok(self.authorization_url())
+    }
+
+    pub fn cancel_login(&mut self) {
+        self.login_pipe_server = None;
+    }
+
+    fn authorization_url(&self) -> String {
         // Generate a PKCE challenge.
     let (pkce_challenge, pkce_verifier) = PkceCodeChallenge::new_random_sha256();
 
