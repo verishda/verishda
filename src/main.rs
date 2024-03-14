@@ -1,7 +1,7 @@
 //#![windows_subsystem = "windows"]
 
 use std::sync::Arc;
-use tokio::{net::windows::named_pipe::{self, NamedPipeServer, ServerOptions}, sync::Mutex};
+use tokio::sync::Mutex;
 
 use slint::Weak;
 use tokio::runtime::Handle;
@@ -10,6 +10,7 @@ slint::include_modules!();
 
 mod platform;
 mod core;
+mod client;
 
 use core::AppCore;
 
@@ -51,7 +52,7 @@ fn ui_main() {
 
     platform::startup(AppCore::uri_scheme(), AppCore::redirect_url_param());
 
-    let app_core = Arc::new(Mutex::new(AppCore::new()));
+    let app_core = AppCore::new();
 
     let main_window = MainWindow::new().unwrap();
     let main_window_weak = main_window.as_weak();
@@ -69,10 +70,14 @@ fn ui_main() {
     main_window.show().unwrap();
 
     let main_window_weak = main_window.as_weak();
-    start_fetch_provider_metadata(main_window_weak.clone(), app_core);
+    let app_core_clone = app_core.clone();
+    start_fetch_provider_metadata(main_window_weak.clone(), app_core_clone);
 
     // NOT: will need to change to slint::run_event_loop_until_quit() when we have a systray icon
     slint::run_event_loop().unwrap();
+
+    app_core.blocking_lock().quit();
+
 }
 
 fn start_fetch_provider_metadata(main_window: Weak<MainWindow>, app_core: Arc<Mutex<AppCore>>) {

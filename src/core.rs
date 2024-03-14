@@ -1,24 +1,32 @@
-use std::sync::Arc;
+use std::{sync::Arc, time::{Duration, Instant}};
 
 use futures::prelude::*;
-use openidconnect::{core::{CoreAuthenticationFlow, CoreClient, CoreProviderMetadata}, reqwest::async_http_client, AuthorizationCode, ClientId, CsrfToken, IssuerUrl, Nonce, OAuth2TokenResponse, PkceCodeChallenge, PkceCodeVerifier, RedirectUrl};
+use openidconnect::{core::{CoreAuthenticationFlow, CoreClient, CoreProviderMetadata}, reqwest::async_http_client, AuthorizationCode, ClientId, CsrfToken, IssuerUrl, Nonce, OAuth2TokenResponse, PkceCodeChallenge, PkceCodeVerifier, RedirectUrl, RefreshToken};
 use anyhow::Result;
+use reqwest::header::HeaderMap;
 use tokio::{net::windows::named_pipe::{ClientOptions, NamedPipeServer, ServerOptions}, sync::Mutex};
 use tokio_util::codec::{FramedWrite, FramedRead, LengthDelimitedCodec};
 use tokio_serde::{formats::SymmetricalJson, SymmetricallyFramed};
 use url::Url;
+use winapi::vc::excpt;
 
+use crate::client;
+
+#[derive(Debug)]
 struct Credentials {
     access_token: String,
     refresh_token: String,
+    expires_at: Instant,
 }
 
-#[derive(Default)]
 pub struct AppCore {
     oidc_metadata: Option<CoreProviderMetadata>,
     oidc_client: Option<CoreClient>,
     credentials: Option<Credentials>,
+    command_tx: tokio::sync::mpsc::Sender<AppCoreCommand>,
 }
+
+const PUBLIC_API_BASE_URL: &str = "https://verishda.shuttleapp.rs";
 
 #[derive(serde::Serialize, serde::Deserialize)]
 enum LoginPipeMessage {
@@ -28,9 +36,47 @@ enum LoginPipeMessage {
     },
 }
 
+enum AppCoreCommand {
+    RefreshPrecences,
+    Quit,
+}
+
 impl AppCore {
-    pub fn new() -> Self {
-        Self::default()
+    pub fn new() -> Arc<Mutex<Self>> {
+        let (tx, mut rx) = tokio::sync::mpsc::channel::<AppCoreCommand>(1);
+        let app_core = Self {
+            command_tx: tx,
+            oidc_metadata: None,
+            oidc_client: None,
+            credentials: None,
+        };
+
+        let app_core = Arc::new(Mutex::new(app_core));
+        let app_core_clone = app_core.clone();
+        tokio::spawn(async move {
+            let mut ival = tokio::time::interval(Duration::from_secs(5));
+            ival.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+            loop {
+                tokio::select! {
+                    _ = ival.tick() => {
+                        app_core_clone.lock().await.refresh_presences().await;
+                    }
+                    cmd = rx.recv() => {
+                        if let Some(cmd) = cmd {
+                            match cmd {
+                                AppCoreCommand::RefreshPrecences => {
+                                    app_core_clone.lock().await.refresh_presences().await;
+                                }
+                                AppCoreCommand::Quit => {
+                                    break;
+                                }
+                            }
+                        }
+                   }
+                }
+            }
+        });
+        app_core
     }
 
     /// The URI scheme name that is used to register the application as a handler for the redirect URL.
@@ -43,6 +89,49 @@ impl AppCore {
         "--redirect-url"
     }
 
+    pub fn quit(&mut self) {
+       self.command_tx.blocking_send(AppCoreCommand::Quit).unwrap();
+    }
+
+    async fn create_client(&mut self) -> Result<client::Client> {
+        if let Some(credentials) = &mut self.credentials {
+            if Instant::now().cmp(&credentials.expires_at) == std::cmp::Ordering::Greater{
+                let refresh_token = RefreshToken::new(credentials.refresh_token.clone());
+                let resp = self.oidc_client.as_ref().unwrap().exchange_refresh_token(&refresh_token)
+                    .request_async(async_http_client)
+                    .await?;
+                credentials.access_token = resp.access_token().secret().to_string();
+                credentials.expires_at = Self::expires_at_from_now(resp.expires_in());
+            }
+
+            let mut headers = HeaderMap::new();
+            let access_token = &credentials.access_token;
+            headers.insert("Authorization", format!("Bearer {access_token}").parse().unwrap());
+            let inner = reqwest::Client::builder()
+                .default_headers(headers)
+                .connection_verbose(true)
+                .build()
+                .expect("client creation failed");
+            let client = client::Client::new_with_client(PUBLIC_API_BASE_URL, inner);
+            Ok(client)
+        } else {
+            Err(anyhow::anyhow!("Not logged in"))
+        }
+    }
+
+    async fn refresh_presences(&mut self) {
+        if let Ok(client) = self.create_client().await {
+            
+            match client.handle_get_sites().await {
+                Ok(sites) => {
+                    println!("Got sites: {:?}", sites);
+                }
+                Err(e) => {
+                    println!("Failed to get sites: {}", e);
+                }
+            }
+        }
+    }
     fn redirect_url(&self) -> String {
         Self::uri_scheme().to_owned() + "://exchange-token"
     }
@@ -105,9 +194,9 @@ impl AppCore {
                     }
                     LoginPipeMessage::HandleRedirect{code} => {
                         println!("Received authorization code: {}", code);
-                        let (access_token, refresh_token) = Self::exchange_code_for_tokens(app_core.clone(), code, pkce_verifier).await?;
-                        println!("Exchanged into access_token {access_token}");
-                        app_core.lock().await.credentials = Some(Credentials {access_token, refresh_token});
+                        let credentials = Self::exchange_code_for_tokens(app_core.clone(), code, pkce_verifier).await?;
+                        println!("Exchanged into access_token {credentials:?}");
+                        app_core.lock().await.credentials = Some(credentials);
                         
                         return Ok(true);
                     }
@@ -116,7 +205,17 @@ impl AppCore {
         }
     }
 
-    async fn exchange_code_for_tokens(app_core: Arc<Mutex<AppCore>>, code: String, pkce_verifier: PkceCodeVerifier) -> Result<(String, String)> {
+    fn expires_at_from_now(expires_in: Option<Duration>) -> Instant {
+        let expires_in = expires_in
+        .unwrap_or(Duration::from_secs(60));
+
+        // reduce the expiration time by 10% to account for clock skew
+        let expires_in = expires_in * 9 / 10;
+
+        Instant::now() + expires_in
+    }
+
+    async fn exchange_code_for_tokens(app_core: Arc<Mutex<AppCore>>, code: String, pkce_verifier: PkceCodeVerifier) -> Result<Credentials> {
         let app_core = app_core.lock().await;
         let client = app_core.oidc_client.as_ref().unwrap();
         let token_response = client.exchange_code(AuthorizationCode::new(code))
@@ -125,7 +224,12 @@ impl AppCore {
             .await?;
         let access_token = token_response.access_token().secret().to_string();
         let refresh_token = token_response.refresh_token().unwrap().secret().to_string();
-        Ok((access_token, refresh_token))
+        let credentials = Credentials {
+            access_token,
+            refresh_token,
+            expires_at: Self::expires_at_from_now(token_response.expires_in()),
+        };
+        Ok(credentials)
     }
 
     pub async fn handle_login_redirect(url: &str) -> Result<()> {
