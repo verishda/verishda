@@ -3,14 +3,15 @@ use std::{sync::Arc, time::{Duration, Instant}};
 use futures::prelude::*;
 use openidconnect::{core::{CoreAuthenticationFlow, CoreClient, CoreProviderMetadata}, reqwest::async_http_client, AuthorizationCode, ClientId, CsrfToken, IssuerUrl, Nonce, OAuth2TokenResponse, PkceCodeChallenge, PkceCodeVerifier, RedirectUrl, RefreshToken};
 use anyhow::Result;
-use reqwest::header::HeaderMap;
+use reqwest::{header::HeaderMap, StatusCode};
 use tokio::{net::windows::named_pipe::{ClientOptions, NamedPipeServer, ServerOptions}, sync::Mutex};
 use tokio_util::codec::{FramedWrite, FramedRead, LengthDelimitedCodec};
 use tokio_serde::{formats::SymmetricalJson, SymmetricallyFramed};
 use url::Url;
-use winapi::vc::excpt;
+
 
 use crate::client;
+
 
 #[derive(Debug)]
 struct Credentials {
@@ -24,6 +25,12 @@ pub struct AppCore {
     oidc_client: Option<CoreClient>,
     credentials: Option<Credentials>,
     command_tx: tokio::sync::mpsc::Sender<AppCoreCommand>,
+    on_core_event: Option<Box<dyn Fn(CoreEvent) + Send>>,
+}
+
+pub enum CoreEvent {
+    SitesUpdated(Vec<client::types::Site>),
+    PresencesChanged
 }
 
 const PUBLIC_API_BASE_URL: &str = "https://verishda.shuttleapp.rs";
@@ -49,6 +56,7 @@ impl AppCore {
             oidc_metadata: None,
             oidc_client: None,
             credentials: None,
+            on_core_event: None,
         };
 
         let app_core = Arc::new(Mutex::new(app_core));
@@ -123,8 +131,10 @@ impl AppCore {
         if let Ok(client) = self.create_client().await {
             
             match client.handle_get_sites().await {
-                Ok(sites) => {
+                Ok(sites_response) => {
+                    let sites = sites_response.into_inner();
                     println!("Got sites: {:?}", sites);
+                    self.broadcast_core_event(CoreEvent::SitesUpdated(sites));
                 }
                 Err(e) => {
                     println!("Failed to get sites: {}", e);
@@ -132,6 +142,19 @@ impl AppCore {
             }
         }
     }
+
+    pub fn on_core_event<F>(&mut self, f: F)
+    where F: Fn(CoreEvent) + Send + 'static
+    {
+        self.on_core_event = Some(Box::new(f));
+    }
+
+    fn broadcast_core_event(&self, event: CoreEvent) {
+        if let Some(on_core_event) = &self.on_core_event {
+            on_core_event(event);
+        }
+    }
+
     fn redirect_url(&self) -> String {
         Self::uri_scheme().to_owned() + "://exchange-token"
     }

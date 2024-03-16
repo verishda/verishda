@@ -14,6 +14,7 @@ export global AppUI {
     pure callback login_cancelled();
 
     in property <MainWindowState> state: MainWindowState.FetchingProviderMetadata;
+    in property <[string]> site_names;
 }
 
 
@@ -93,7 +94,9 @@ export component MainWindow inherits Window {
         waiting_for_login_view := WaitingForLoginView {}
         
     if AppUI.state == MainWindowState.ShowingSitePresenceView: 
-        site_presence_view := SitePresenceView {}
+        site_presence_view := SitePresenceView {
+            site_names <=> AppUI.site_names;
+        }
 
     
 }

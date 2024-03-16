@@ -3,7 +3,7 @@
 use std::sync::Arc;
 use tokio::sync::Mutex;
 
-use slint::Weak;
+use slint::{ModelRc, SharedString, VecModel, Weak};
 use tokio::runtime::Handle;
 
 slint::include_modules!();
@@ -65,6 +65,24 @@ fn ui_main() {
     let app_core_clone = app_core.clone();
     appui.on_login_cancelled(move||{
         cancel_login(app_core_clone.clone(), main_window_weak.clone());
+    });
+
+    let main_window_weak = main_window.as_weak();
+    app_core.blocking_lock().on_core_event(move |event|{
+        main_window_weak.upgrade_in_event_loop(|main_window|{
+            let app_ui = main_window.global::<AppUI>();
+            match event {
+                core::CoreEvent::SitesUpdated(sites) => {
+                    let site_names: VecModel<SharedString> = sites.iter()
+                    .map(|site| SharedString::from(site.name.clone()))
+                    .collect::<Vec<_>>()
+                    .into();
+                    let site_names = ModelRc::new(VecModel::from(site_names));
+                    app_ui.set_site_names(site_names);
+                },
+                _ => {}
+            }
+        }).unwrap();        
     });
 
     main_window.show().unwrap();

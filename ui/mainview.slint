@@ -88,7 +88,7 @@ export component SitePresenceView inherits Window {
         {name: "Brian Nürnberg"},
     ];
 
-    in property <[string]> sites: [
+    in property <[string]> site_names: [
         "Stuttgart",
         "Reutlingen",
         "Jeverstrasse",
@@ -101,7 +101,7 @@ export component SitePresenceView inherits Window {
     VerticalLayout { 
         alignment: start;
         site_combo := ComboBox {
-            model: sites;
+            model: site_names;
         }
 
         if persons.length > 0:
