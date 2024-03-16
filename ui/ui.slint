@@ -1,6 +1,6 @@
 import { CheckBox , TextEdit, VerticalBox, HorizontalBox, Button, LineEdit, ProgressIndicator } from "std-widgets.slint";
 
-import { SitePresenceView } from "mainview.slint";
+import { SitePresenceView, SiteModel, PersonModel } from "mainview.slint";
 
 enum MainWindowState {
     FetchingProviderMetadata,
@@ -14,7 +14,9 @@ export global AppUI {
     pure callback login_cancelled();
 
     in property <MainWindowState> state: MainWindowState.FetchingProviderMetadata;
+    in-out property <[SiteModel]> sites;
     in property <[string]> site_names;
+    in property <[PersonModel]> persons;
 }
 
 
@@ -95,7 +97,9 @@ export component MainWindow inherits Window {
         
     if AppUI.state == MainWindowState.ShowingSitePresenceView: 
         site_presence_view := SitePresenceView {
+            sites <=> AppUI.sites;
             site_names <=> AppUI.site_names;
+            persons <=> AppUI.persons;
         }
 
     

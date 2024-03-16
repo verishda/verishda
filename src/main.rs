@@ -3,8 +3,9 @@
 use std::sync::Arc;
 use tokio::sync::Mutex;
 
-use slint::{ModelRc, SharedString, VecModel, Weak};
+use slint::{MapModel, Model, ModelRc, SharedString, VecModel, Weak};
 use tokio::runtime::Handle;
+use crate::client::types::Site;
 
 slint::include_modules!();
 
@@ -57,13 +58,21 @@ fn ui_main() {
     let main_window = MainWindow::new().unwrap();
     let main_window_weak = main_window.as_weak();
     let app_core_clone = app_core.clone();
-    let appui = main_window.global::<AppUI>();
-    appui.on_login_triggered(move||{
+    let app_ui = main_window.global::<AppUI>();
+    app_ui.on_login_triggered(move||{
         start_login(app_core_clone.clone(), main_window_weak.clone());
     });
+
+    // wire site_names to sites property, mapping names. This is so that
+    // the site names can be shown in the ComboBox, which only accepts [string],
+    // not [SiteModel]
+    app_ui.set_sites(ModelRc::new(VecModel::default()));
+    let site_names = app_ui.get_sites().map(|site| site.name.clone());
+    app_ui.set_site_names(ModelRc::new(site_names));
+
     let main_window_weak = main_window.as_weak();
     let app_core_clone = app_core.clone();
-    appui.on_login_cancelled(move||{
+    app_ui.on_login_cancelled(move||{
         cancel_login(app_core_clone.clone(), main_window_weak.clone());
     });
 
@@ -71,14 +80,20 @@ fn ui_main() {
     app_core.blocking_lock().on_core_event(move |event|{
         main_window_weak.upgrade_in_event_loop(|main_window|{
             let app_ui = main_window.global::<AppUI>();
+
+//            let site_names = MapModel::new(app_ui.get_sites(), |site| site.name.clone());
             match event {
                 core::CoreEvent::SitesUpdated(sites) => {
-                    let site_names: VecModel<SharedString> = sites.iter()
-                    .map(|site| SharedString::from(site.name.clone()))
-                    .collect::<Vec<_>>()
-                    .into();
-                    let site_names = ModelRc::new(VecModel::from(site_names));
-                    app_ui.set_site_names(site_names);
+                    let sites_model = app_ui.get_sites();
+                    let sites_model = sites_model.as_any()
+                    .downcast_ref::<VecModel<SiteModel>>()
+                    .expect("we set VecModel<> earlier");
+                    
+                    let sites_vec: Vec<SiteModel> = sites.iter()
+                    .map(|site| site.into())
+                    .collect();
+                    
+                    sites_model.set_vec(sites_vec);
                 },
                 _ => {}
             }
@@ -147,4 +162,13 @@ fn cancel_login(app_core: Arc<Mutex<AppCore>>, main_window: Weak<MainWindow>){
         let app_ui = main_window.global::<AppUI>();
         app_ui.set_state(MainWindowState::ShowingWelcomeView);
     }).unwrap();
+}
+
+impl Into<SiteModel> for &Site {
+    fn into(self) -> SiteModel {
+        SiteModel {
+            id: self.id.clone().into(),
+            name: self.name.clone().into(),
+        }
+    }
 }
