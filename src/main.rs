@@ -1,6 +1,8 @@
 //#![windows_subsystem = "windows"]
 
-use std::sync::Arc;
+use std::{collections::HashSet, env, sync::Arc};
+use chrono::{Datelike, Weekday};
+use client::types::Presence;
 use tokio::sync::Mutex;
 
 use slint::{MapModel, Model, ModelRc, SharedString, VecModel, Weak};
@@ -15,10 +17,10 @@ mod client;
 
 use core::AppCore;
 
-const PUBLIC_ISSUER_URL: &str = "https://lemur-5.cloud-iam.com/auth/realms/werischda";
-const PUBLIC_CLIENT_ID: &str = "verishda-windows";
-
 fn main() {
+
+    simple_logger::SimpleLogger::new().env().init().unwrap();
+    log::info!("Starting up Verishda");
 
     let args: Vec<String> = std::env::args().collect();
 
@@ -70,10 +72,17 @@ fn ui_main() {
     let site_names = app_ui.get_sites().map(|site| site.name.clone());
     app_ui.set_site_names(ModelRc::new(site_names));
 
+    app_ui.set_persons(ModelRc::new(VecModel::default()));
+
     let main_window_weak = main_window.as_weak();
     let app_core_clone = app_core.clone();
     app_ui.on_login_cancelled(move||{
         cancel_login(app_core_clone.clone(), main_window_weak.clone());
+    });
+
+    let app_core_clone = app_core.clone();
+    app_ui.on_site_selected(move|site_id|{
+        site_selected(app_core_clone.clone(), &site_id);
     });
 
     let main_window_weak = main_window.as_weak();
@@ -81,7 +90,6 @@ fn ui_main() {
         main_window_weak.upgrade_in_event_loop(|main_window|{
             let app_ui = main_window.global::<AppUI>();
 
-//            let site_names = MapModel::new(app_ui.get_sites(), |site| site.name.clone());
             match event {
                 core::CoreEvent::SitesUpdated(sites) => {
                     let sites_model = app_ui.get_sites();
@@ -94,6 +102,18 @@ fn ui_main() {
                     .collect();
                     
                     sites_model.set_vec(sites_vec);
+                },
+                core::CoreEvent::PresencesChanged(presences) => {
+                    let persons_model = app_ui.get_persons();
+                    let persons_model = persons_model.as_any()
+                    .downcast_ref::<VecModel<PersonModel>>()
+                    .expect("we set VecModel<> earlier");
+
+                    let persons_vec: Vec<PersonModel> = presences.iter()
+                    .map(to_person_model)
+                    .collect();
+
+                    persons_model.set_vec(persons_vec);
                 },
                 _ => {}
             }
@@ -114,10 +134,10 @@ fn ui_main() {
 }
 
 fn start_fetch_provider_metadata(main_window: Weak<MainWindow>, app_core: Arc<Mutex<AppCore>>) {
-    main_window.unwrap().global::<AppUI>().set_state(MainWindowState::FetchingProviderMetadata);
+    main_window.unwrap().global::<AppUI>().set_state(MainWindowState::Startup);
     Handle::current().spawn(async move {
         let mut app_core = app_core.lock().await;
-        match app_core.init_provider(PUBLIC_ISSUER_URL, PUBLIC_CLIENT_ID).await {
+        match app_core.init().await {
             Ok(_) => {
                 main_window.upgrade_in_event_loop(|main_window|{
                     let app_ui = main_window.global::<AppUI>();
@@ -137,6 +157,7 @@ fn start_login(app_core: Arc<Mutex<AppCore>>, main_window_weak: Weak<MainWindow>
     let mw = main_window_weak.clone();
     let auth_url = if let Ok(auth_url) = AppCore::start_login(app_core.clone(), move |logged_in|{
         mw.upgrade_in_event_loop(move |main_window: MainWindow|{
+            log::info!("Logged in: {logged_in}");
             let app_ui = main_window.global::<AppUI>();
             if logged_in {
                 app_ui.set_state(MainWindowState::ShowingSitePresenceView);
@@ -164,11 +185,29 @@ fn cancel_login(app_core: Arc<Mutex<AppCore>>, main_window: Weak<MainWindow>){
     }).unwrap();
 }
 
+fn site_selected(app_core: Arc<Mutex<AppCore>>, site_id: &str) {
+    log::info!("Site selected: {site_id}");
+    app_core.blocking_lock().set_site(site_id);
+}
+
 impl Into<SiteModel> for &Site {
     fn into(self) -> SiteModel {
         SiteModel {
             id: self.id.clone().into(),
             name: self.name.clone().into(),
         }
+    }
+}
+
+const ALLOWED_WEEKDAYS: [Weekday;5] = [Weekday::Mon, Weekday::Tue, Weekday::Wed, Weekday::Thu, Weekday::Fri];
+const ANNOUCED_DAYS_AHEAD: u32 = 7;
+
+fn to_person_model(presence: &Presence) -> PersonModel {
+    PersonModel {
+        name: presence.logged_as_name.clone().into(),
+        is_present: presence.currently_present,
+        // TODO! implement this
+        announced: ModelRc::new(VecModel::from(vec![false, false, false, false, false])),
+        is_self: false,
     }
 }

@@ -8,12 +8,18 @@ use tokio::{net::windows::named_pipe::{ClientOptions, NamedPipeServer, ServerOpt
 use tokio_util::codec::{FramedWrite, FramedRead, LengthDelimitedCodec};
 use tokio_serde::{formats::SymmetricalJson, SymmetricallyFramed};
 use url::Url;
+use log::*;
+
+use crate::{client, core::location::Location};
+
+mod location;
+
+const PUBLIC_ISSUER_URL: &str = "https://lemur-5.cloud-iam.com/auth/realms/werischda";
+const PUBLIC_CLIENT_ID: &str = "verishda-windows";
 
 
-use crate::client;
 
-
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 struct Credentials {
     access_token: String,
     refresh_token: String,
@@ -21,16 +27,18 @@ struct Credentials {
 }
 
 pub struct AppCore {
+    location_handler: Arc<Mutex<location::LocationHandler>>,
     oidc_metadata: Option<CoreProviderMetadata>,
     oidc_client: Option<CoreClient>,
     credentials: Option<Credentials>,
     command_tx: tokio::sync::mpsc::Sender<AppCoreCommand>,
     on_core_event: Option<Box<dyn Fn(CoreEvent) + Send>>,
+    site: Option<String>,
 }
 
 pub enum CoreEvent {
     SitesUpdated(Vec<client::types::Site>),
-    PresencesChanged
+    PresencesChanged(Vec<client::types::Presence>),
 }
 
 const PUBLIC_API_BASE_URL: &str = "https://verishda.shuttleapp.rs";
@@ -52,21 +60,36 @@ impl AppCore {
     pub fn new() -> Arc<Mutex<Self>> {
         let (tx, mut rx) = tokio::sync::mpsc::channel::<AppCoreCommand>(1);
         let app_core = Self {
+            location_handler: location::LocationHandler::new(),
             command_tx: tx,
             oidc_metadata: None,
             oidc_client: None,
             credentials: None,
             on_core_event: None,
+            site: None,
         };
 
         let app_core = Arc::new(Mutex::new(app_core));
         let app_core_clone = app_core.clone();
         tokio::spawn(async move {
-            let mut ival = tokio::time::interval(Duration::from_secs(5));
-            ival.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+
+            log::info!("AppCore background task started");
+
+            // start with refreshing presences
+            app_core_clone.lock().await.refresh_sites().await;
+
+            // install interval timer
+            let mut site_refresh_ival = tokio::time::interval(Duration::from_secs(60));
+            let mut presence_refresh_ival = tokio::time::interval(Duration::from_secs(5));
+            site_refresh_ival.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+            
             loop {
                 tokio::select! {
-                    _ = ival.tick() => {
+                    _ = site_refresh_ival.tick() => {
+                        app_core_clone.lock().await.refresh_sites().await;
+                    }
+                    _ = presence_refresh_ival.tick() => {
+                        app_core_clone.lock().await.update_own_presence().await;
                         app_core_clone.lock().await.refresh_presences().await;
                     }
                     cmd = rx.recv() => {
@@ -85,6 +108,19 @@ impl AppCore {
             }
         });
         app_core
+    }
+
+    pub fn set_site(&mut self, site_id: &str) {
+        let new_site = if site_id.is_empty() {
+           None
+        } else {
+           Some(site_id.to_string())
+        };
+        let changed = self.site == new_site;
+        self.site = new_site;
+        if changed {
+            _ = self.command_tx.blocking_send(AppCoreCommand::RefreshPrecences);
+        }
     }
 
     /// The URI scheme name that is used to register the application as a handler for the redirect URL.
@@ -127,14 +163,57 @@ impl AppCore {
         }
     }
 
-    async fn refresh_presences(&mut self) {
+    async fn refresh_sites(&mut self) {
+        log::trace!("Refreshing sites");
         if let Ok(client) = self.create_client().await {
             
             match client.handle_get_sites().await {
                 Ok(sites_response) => {
                     let sites = sites_response.into_inner();
-                    println!("Got sites: {:?}", sites);
+                    log::debug!("Got sites: {sites:?}", );
+                    let mut location_handler = self.location_handler.lock().await;
+                    location_handler.clear_geofences();
+                    for site in &sites {
+                        let location = Location::new(site.latitude as f64, site.longitude as f64);
+                        location_handler.add_geofence_circle(&site.id, &location, 100.);
+                    }
                     self.broadcast_core_event(CoreEvent::SitesUpdated(sites));
+                }
+                Err(e) => {
+                    println!("Failed to get sites: {}", e);
+                }
+            }
+        }
+    }
+
+    async fn update_own_presence(&mut self) {
+        if let Ok(client) = self.create_client().await {
+            // note: the geo fence IDs are are set as the site IDs
+            for site_id in self.location_handler.lock().await.get_occupied_geofences() {
+                if let Err(e) = client.handle_post_sites_siteid_hello(&site_id).await {
+                    log::error!("Failed to update presence for site {site_id}: {e}")
+                }
+            }
+        }
+    }
+
+    async fn refresh_presences(&mut self) {
+        if let Ok(client) = self.create_client().await {
+
+            log::trace!("Refreshing presences");
+            let site = if let Some(site) = &self.site {
+                site
+            } else {
+                log::trace!("No site selected, aborting presence refresh");
+                return;
+            };
+
+            log::trace!("Getting presences for site {site}");
+            match client.handle_get_sites_siteid_presence(site).await {
+                Ok(sites_response) => {
+                    let presences = sites_response.into_inner();
+                    println!("Got presences: {:?}", presences);
+                    self.broadcast_core_event(CoreEvent::PresencesChanged(presences));
                 }
                 Err(e) => {
                     println!("Failed to get sites: {}", e);
@@ -177,7 +256,7 @@ impl AppCore {
             let r = Self::read_login_pipe_message(app_core, pkce_verifier, pipe_server).await;
             let logged_in = match r {
                 Err(e) => {
-                    println!("Error reading login pipe message: {}", e);
+                    log::error!("Error reading login pipe message: {}", e);
                     false
                 },
                 Ok(logged_in) => logged_in,
@@ -205,6 +284,7 @@ impl AppCore {
     }
 
     async fn read_login_pipe_message(app_core: Arc<Mutex<AppCore>>, pkce_verifier: PkceCodeVerifier, mut pipe_server: NamedPipeServer) -> Result<bool> {
+        log::info!("Waiting for login pipe message");
         pipe_server.connect().await?;
 
         let frame = FramedRead::new(&mut pipe_server, LengthDelimitedCodec::new());
@@ -216,11 +296,11 @@ impl AppCore {
                         return Ok(false);
                     }
                     LoginPipeMessage::HandleRedirect{code} => {
-                        println!("Received authorization code: {}", code);
+                        log::info!("Received authorization code: {}", code);
                         let credentials = Self::exchange_code_for_tokens(app_core.clone(), code, pkce_verifier).await?;
-                        println!("Exchanged into access_token {credentials:?}");
+                        log::info!("Exchanged into access_token {credentials:?}");
                         app_core.lock().await.credentials = Some(credentials);
-                        
+                        app_core.lock().await.refresh_sites().await;
                         return Ok(true);
                     }
                 }
@@ -289,7 +369,12 @@ impl AppCore {
         (auth_url, pkce_verifier)
     }
 
-    pub async fn init_provider(&mut self, issuer_url: &str, client_id: &str) -> Result<()>{
+    pub async fn init(&mut self) -> Result<()>{
+        self.init_provider(PUBLIC_ISSUER_URL, PUBLIC_CLIENT_ID).await?;
+        Ok(())
+    }
+
+    async fn init_provider(&mut self, issuer_url: &str, client_id: &str) -> Result<()>{
         let issuer_url = IssuerUrl::new(issuer_url.to_string()).unwrap();
         let redirect_url = RedirectUrl::new(self.redirect_url())?;
         
@@ -308,9 +393,8 @@ impl AppCore {
         .set_redirect_uri(redirect_url);
         
         self.oidc_client = Some(client);
-    
-
 
         Ok(())
     }
-}
+
+ }

@@ -102,13 +102,31 @@ export component SitePresenceView inherits Window {
 
     in property <bool> loading: false;
 
-    out property <int> selected_site_index;
+    out property <string> selected_site_id;
 
-    VerticalLayout { 
+    callback site_selected(string);
+
+    out property <string> current_site_id <=> panel.current_site_id;
+
+    panel := VerticalLayout { 
         alignment: start;
+        out property <string> current_site_id <=> site_combo.current_site_id;
+        
         site_combo := ComboBox {
+
+            out property <string> current_site_id;
+
+            function get_current_site_id() -> string {
+                self.current-index >= 0 ? sites[self.current-index].id : ""
+            } 
+
             model: site_names;
+            selected(name) => {
+                self.current_site_id = get_current_site_id();
+                root.site_selected(get_current_site_id());
+            }
         }
+
 
         if persons.length > 0:
             PresenceGrid {
@@ -122,5 +140,5 @@ export component SitePresenceView inherits Window {
                 text: @tr("No people registered at site");
                 horizontal-alignment: center;
             }
-    }    
+    } 
 }

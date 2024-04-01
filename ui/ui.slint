@@ -3,7 +3,7 @@ import { CheckBox , TextEdit, VerticalBox, HorizontalBox, Button, LineEdit, Prog
 import { SitePresenceView, SiteModel, PersonModel } from "mainview.slint";
 
 enum MainWindowState {
-    FetchingProviderMetadata,
+    Startup,
     ShowingWelcomeView,
     ShowingSitePresenceView,
     ShowingWaitingForLoginView,
@@ -12,8 +12,9 @@ enum MainWindowState {
 export global AppUI {
     pure callback login_triggered();
     pure callback login_cancelled();
+    pure callback site_selected(string);
 
-    in property <MainWindowState> state: MainWindowState.FetchingProviderMetadata;
+    in property <MainWindowState> state: MainWindowState.ShowingSitePresenceView;
     in-out property <[SiteModel]> sites;
     in property <[string]> site_names;
     in property <[PersonModel]> persons;
@@ -86,7 +87,7 @@ component WaitingForLoginView {
 
 export component MainWindow inherits Window {
     
-    if AppUI.state == MainWindowState.FetchingProviderMetadata:
+    if AppUI.state == MainWindowState.Startup:
         fetch_view := FetchProviderMetaView {}
 
     if AppUI.state == MainWindowState.ShowingWelcomeView:
@@ -100,6 +101,9 @@ export component MainWindow inherits Window {
             sites <=> AppUI.sites;
             site_names <=> AppUI.site_names;
             persons <=> AppUI.persons;
+            site_selected(site_id) => {
+                AppUI.site_selected(site_id);
+            }
         }
 
     
