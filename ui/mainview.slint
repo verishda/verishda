@@ -1,4 +1,4 @@
-import { StandardTableView , HorizontalBox, VerticalBox, ComboBox} from "std-widgets.slint";
+import { StandardTableView , HorizontalBox, VerticalBox, ComboBox, Button} from "std-widgets.slint";
 
 export struct PersonModel {
     name: string,
@@ -105,25 +105,39 @@ export component SitePresenceView inherits Window {
     out property <string> selected_site_id;
 
     callback site_selected(string);
+    callback refresh_requested();
 
     out property <string> current_site_id <=> panel.current_site_id;
 
     panel := VerticalLayout { 
         alignment: start;
-        out property <string> current_site_id <=> site_combo.current_site_id;
+
+        out property <string> current_site_id <=> top_bar.current_site_id;
         
-        site_combo := ComboBox {
+        top_bar := HorizontalLayout {
 
-            out property <string> current_site_id;
+            out property <string> current_site_id <=> site_combo.current_site_id;
 
-            function get_current_site_id() -> string {
-                self.current-index >= 0 ? sites[self.current-index].id : ""
-            } 
+            site_combo := ComboBox {
 
-            model: site_names;
-            selected(name) => {
-                self.current_site_id = get_current_site_id();
-                root.site_selected(get_current_site_id());
+                out property <string> current_site_id;
+    
+                function get_current_site_id() -> string {
+                    self.current-index >= 0 ? sites[self.current-index].id : ""
+                } 
+    
+                model: site_names;
+                selected(name) => {
+                    self.current_site_id = get_current_site_id();
+                    root.site_selected(get_current_site_id())
+                }
+            }
+
+            Button {
+                icon: @image-url("icons/reload.png");
+                clicked => {
+                    root.refresh_requested();
+                }
             }
         }
 

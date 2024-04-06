@@ -87,7 +87,7 @@ component WaitingForLoginView {
 
 export component MainWindow inherits Window {
     
-    if AppUI.state == MainWindowState.Startup:
+    if AppUI.state == MainWindowState.Startup: 
         fetch_view := FetchProviderMetaView {}
 
     if AppUI.state == MainWindowState.ShowingWelcomeView:
@@ -98,6 +98,7 @@ export component MainWindow inherits Window {
         
     if AppUI.state == MainWindowState.ShowingSitePresenceView: 
         site_presence_view := SitePresenceView {
+            width: root.width;
             sites <=> AppUI.sites;
             site_names <=> AppUI.site_names;
             persons <=> AppUI.persons;
