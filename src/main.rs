@@ -119,6 +119,9 @@ fn ui_main() {
                     .collect();
 
                     persons_model.set_vec(persons_vec);
+
+                    let current_day = chrono::Local::now().weekday().num_days_from_monday() as i32;
+                    app_ui.set_current_day_index(current_day)
                 },
                 _ => {}
             }

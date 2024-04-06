@@ -19,6 +19,7 @@ export global AppUI {
     in-out property <[SiteModel]> sites;
     in property <[string]> site_names;
     in property <[PersonModel]> persons;
+    in property <int> current_day_index;
 }
 
 
@@ -109,6 +110,7 @@ export component MainWindow inherits Window {
             refresh_requested() => {
                 AppUI.refresh_requested();
             }
+            current_day_index: AppUI.current_day_index;
         }
 
     

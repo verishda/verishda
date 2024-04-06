@@ -102,6 +102,8 @@ export component SitePresenceView inherits Window {
 
     in property <bool> loading: false;
 
+    in property <int> current_day_index;
+
     out property <string> selected_site_id;
 
     callback site_selected(string);
@@ -145,7 +147,7 @@ export component SitePresenceView inherits Window {
         if persons.length > 0:
             PresenceGrid {
                 // example data; this will have to be set in code later
-                current-day-index: 6;
+                current-day-index: root.current_day_index;
                 persons: persons;
             }
         
