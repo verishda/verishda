@@ -21,16 +21,9 @@ impl Location {
             longitude
         }
     }
-}
 
-#[derive(Debug)]
-struct GeoCircle {
-    center: Location,
-    radius: f64
-}
-
-impl GeoCircle {
-    fn is_inside(&self, location: &Location) -> bool {
+    #[allow(non_snake_case)]
+    pub fn squared_distance(&self, location: &Location) -> f64 {
         // https://en.wikipedia.org/wiki/Geographical_distance#Spherical_Earth_projected_to_a_plane
         //
         // D = R * sqrt(Δφ^2 + (cos(φm)*Δλ)^2)
@@ -44,31 +37,56 @@ impl GeoCircle {
         // λ1, λ2 are the longitudes of the two points, all in radians.
         // D is the distance between the two points (along the surface of the sphere),
         // R is the radius of the earth,
-        // r is the radius of the circle,
-        // φm is the average latitude of the two points,
-        //
-        // Because we only want to know if r < D, we transform the formula to:
-        //
-        // r < R * sqrt(Δφ^2 + (cos(φm)*Δλ)^2)
-        // 
-        // squaring both sides leaves us with:
-        //
-        // r^2 < R^2 * (Δφ^2 + (cos(φm)*Δλ)^2)
+        // φm is the average latitude of the two points
         //
 
         let φ1 = location.latitude.to_radians();
         let λ1 = location.longitude.to_radians();
-        let φ2 = self.center.latitude.to_radians();
-        let λ2 = self.center.longitude.to_radians();
+        let φ2 = self.latitude.to_radians();
+        let λ2 = self.longitude.to_radians();
 
         let φm = (φ1 + φ2) / 2.;
         let Δφ = φ2 - φ1;
         let Δλ = λ2 - λ1;
 
         let R =  6378100.0f64; // radius of the earth in km
+
+        // the squared distance is D2
+        let D2 = R.powi(2) * (Δφ.powi(2) + (φm.cos()*Δλ).powi(2));
+        D2
+    }
+}
+
+#[derive(Debug)]
+struct GeoCircle {
+    center: Location,
+    radius: f64
+}
+
+impl GeoCircle {
+    #[allow(non_snake_case)]
+    fn is_inside(&self, location: &Location) -> bool {
+        // To check if we are inside the circle
+        // with radius r of the given location, we first
+        // calculate the distance D to the other location.
+        //
+        // The check if we are inde the circle is
+        // r < D
+        //
+        // Replacing D with it's actual formula yields:
+        //
+        // r < R * sqrt(Δφ^2 + (cos(φm)*Δλ)^2)
+        // 
+        // Because we only want to know if r < D, and calculating
+        // square roots is expensive, we can also compare the
+        // squares:
+        // r^2 < D^2
+        //
+
+        let D2 = self.center.squared_distance(location);
         let r = self.radius;
 
-        r.powi(2) > R.powi(2) * (Δφ.powi(2) + (φm.cos()*Δλ).powi(2))
+        r.powi(2) > D2
     }
 }
 
@@ -181,4 +199,14 @@ fn test_geo_circle() {
 
     assert!(circle.is_inside(&inside));
     assert!(!circle.is_inside(&outside));
+}
+
+#[test]
+fn test_distance() {
+    let loc1 = Location { latitude: 48.48870120526846, longitude: 9.218084635543407 };
+    let loc2 =  Location { latitude: 48.4901237487793, longitude: 9.21942138671875 };
+    let D2 = loc1.squared_distance(&loc2);
+    let D = D2.sqrt();
+    println!("distance betwen {loc1:?} and {loc2:?} is {D}");
+    assert!(D < 100.);
 }
