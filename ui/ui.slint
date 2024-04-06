@@ -13,6 +13,7 @@ export global AppUI {
     pure callback login_triggered();
     pure callback login_cancelled();
     pure callback site_selected(string);
+    pure callback refresh_requested();
 
     in property <MainWindowState> state: MainWindowState.ShowingSitePresenceView;
     in-out property <[SiteModel]> sites;
@@ -104,6 +105,9 @@ export component MainWindow inherits Window {
             persons <=> AppUI.persons;
             site_selected(site_id) => {
                 AppUI.site_selected(site_id);
+            }
+            refresh_requested() => {
+                AppUI.refresh_requested();
             }
         }
 

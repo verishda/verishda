@@ -79,8 +79,8 @@ impl AppCore {
             app_core_clone.lock().await.refresh_sites().await;
 
             // install interval timer
-            let mut site_refresh_ival = tokio::time::interval(Duration::from_secs(60));
-            let mut presence_refresh_ival = tokio::time::interval(Duration::from_secs(5));
+            let mut site_refresh_ival = tokio::time::interval(Duration::from_secs(5*60));
+            let mut presence_refresh_ival = tokio::time::interval(Duration::from_secs(1*60));
             site_refresh_ival.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
             
             loop {
@@ -116,11 +116,15 @@ impl AppCore {
         } else {
            Some(site_id.to_string())
         };
-        let changed = self.site == new_site;
+        let changed = self.site != new_site;
         self.site = new_site;
         if changed {
             _ = self.command_tx.blocking_send(AppCoreCommand::RefreshPrecences);
         }
+    }
+
+    pub fn refresh(&self) {
+        _ = self.command_tx.blocking_send(AppCoreCommand::RefreshPrecences);
     }
 
     /// The URI scheme name that is used to register the application as a handler for the redirect URL.
@@ -175,7 +179,7 @@ impl AppCore {
                     location_handler.clear_geofences();
                     for site in &sites {
                         let location = Location::new(site.latitude as f64, site.longitude as f64);
-                        location_handler.add_geofence_circle(&site.id, &location, 100.);
+                        let _ = location_handler.add_geofence_circle(&site.id, &location, 100.);
                     }
                     self.broadcast_core_event(CoreEvent::SitesUpdated(sites));
                 }

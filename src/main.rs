@@ -85,6 +85,11 @@ fn ui_main() {
         site_selected(app_core_clone.clone(), &site_id);
     });
 
+    let app_core_clone = app_core.clone();
+    app_ui.on_refresh_requested(move||{
+        refresh_requested(app_core_clone.clone());
+    });
+
     let main_window_weak = main_window.as_weak();
     app_core.blocking_lock().on_core_event(move |event|{
         main_window_weak.upgrade_in_event_loop(|main_window|{
@@ -188,6 +193,11 @@ fn cancel_login(app_core: Arc<Mutex<AppCore>>, main_window: Weak<MainWindow>){
 fn site_selected(app_core: Arc<Mutex<AppCore>>, site_id: &str) {
     log::info!("Site selected: {site_id}");
     app_core.blocking_lock().set_site(site_id);
+}
+
+fn refresh_requested(app_core: Arc<Mutex<AppCore>>) {
+    log::info!("Refresh requested");
+    app_core.blocking_lock().refresh();
 }
 
 impl Into<SiteModel> for &Site {
