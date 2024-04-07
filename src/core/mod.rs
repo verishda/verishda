@@ -96,6 +96,7 @@ impl AppCore {
                         if let Some(cmd) = cmd {
                             match cmd {
                                 AppCoreCommand::RefreshPrecences => {
+                                    app_core_clone.lock().await.update_own_presence().await;
                                     app_core_clone.lock().await.refresh_presences().await;
                                 }
                                 AppCoreCommand::Quit => {

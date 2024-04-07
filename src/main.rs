@@ -1,11 +1,14 @@
-//#![windows_subsystem = "windows"]
 
-use std::{collections::HashSet, env, sync::Arc};
+#[cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
+
+use clap::Parser;
+
+use std::{env, sync::Arc};
 use chrono::{Datelike, Weekday};
 use client::types::Presence;
 use tokio::sync::Mutex;
 
-use slint::{MapModel, Model, ModelRc, SharedString, VecModel, Weak};
+use slint::{Model, ModelRc, VecModel, Weak};
 use tokio::runtime::Handle;
 use crate::client::types::Site;
 
@@ -17,31 +20,32 @@ mod client;
 
 use core::AppCore;
 
+#[derive(Parser, Debug)]
+#[command(version, about, long_about = None)]
+struct Args {
+    #[arg(long)]
+    redirect_url: Option<String>,
+}
+
 fn main() {
+    let args = Args::parse();
 
     simple_logger::SimpleLogger::new().env().init().unwrap();
     log::info!("Starting up Verishda");
 
-    let args: Vec<String> = std::env::args().collect();
-
     let runtime = tokio::runtime::Runtime::new().unwrap();
 
     // check if we are being called to handle a redirect
-    if let (Some(param), Some(url)) = (args.get(1), args.get(2)) {
-        if param != AppCore::redirect_url_param() {
-            eprintln!("Unknown parameter: {}", param);
-            std::process::exit(1);
-        } else {
-            runtime.block_on(async {
-                match AppCore::handle_login_redirect(url).await {
-                    Ok(()) => std::process::exit(0),
-                    Err(e) => {
-                        eprintln!("Failed to handle login redirect: {}", e);
-                        std::process::exit(2);
-                    }
+    if let Some(url) = &args.redirect_url {
+        runtime.block_on(async {
+            match AppCore::handle_login_redirect(url).await {
+                Ok(()) => std::process::exit(0),
+                Err(e) => {
+                    eprintln!("Failed to handle login redirect: {}", e);
+                    std::process::exit(2);
                 }
-                });
-        }
+            }
+        });
     } else {
         runtime.block_on(async {
             tokio::task::spawn_blocking(ui_main)
