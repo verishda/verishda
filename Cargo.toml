@@ -1,35 +1,6 @@
-[package]
-name = "hoozin-server"
-authors = ["Pachler, Uwe <uwe.pachler@gmail.com>"]
-description = ""
-version = "0.1.0"
-edition = "2021"
-
-[lib]
-crate-type = [ "cdylib" ]
-
-[dependencies]
-# date and time
-chrono = " 0.4.26"
-# Useful crate to handle errors.
-anyhow = {version="1", features=["backtrace"]}
-thiserror = "1.0.40"
-# Crate to simplify working with bytes.
-bytes = "1"
-# General-purpose crate with common HTTP types.
-http = "0.2"
-# The Spin SDK.
-spin-sdk = { git = "https://github.com/fermyon/spin.git" }
-# Crate that generates Rust Wasm bindings from a WebAssembly interface.
-wit-bindgen-rust = { git = "https://github.com/bytecodealliance/wit-bindgen", rev = "cb871cfa1ee460b51eb1d144b175b9aab9c50aba" }
-swagger-ui = "0.1"
-mime_guess = "2.0"
-log = "0.4.20"
-env_logger = "0.10.0"
-
-serde = {version="1.0.160", features=["derive"]}
-serde_json = "1.0.96"
-openidconnect = {version="3.0.0", default-features = false}
-jwt-simple = "0.11"
-
 [workspace]
+
+members = [
+    "verishda-server",
+    "verishda-slint",
+]

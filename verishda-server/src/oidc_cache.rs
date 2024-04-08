@@ -1,12 +1,14 @@
 use std::ops::Add;
 use std::time::{SystemTime, UNIX_EPOCH, Duration};
 
-use log::{trace, error};
+use log::trace;
 use openidconnect::core::CoreJsonWebKeySet;
 
 use openidconnect::core::CoreProviderMetadata;
 use serde::Deserialize;
 use serde::Serialize;
+
+use anyhow::anyhow;
 
 
 use crate::store::KeyByteValueStore;
@@ -43,8 +45,7 @@ where
     S: KeyByteValueStore
     {
     
-    fn try_get_or_else(&mut self, key: &str, f: impl FnOnce(&str)->Result<CoreProviderMetadata, anyhow::Error>) -> Result<CoreProviderMetadata, anyhow::Error>
-    {
+    fn get(&self, key: &str) -> Option<CoreProviderMetadata>{
         trace!("retrieving entry from spin KVS");
         let raw_result = self.store.get(key);
         let now = SystemTime::now();
@@ -55,31 +56,29 @@ where
                     trace!("return cached metadata instead of retrieving it from source");
                     // we hit the cache and return the content
                     let meta = cache_item.metadata.set_jwks(cache_item.keys);
-                    return Ok(meta)
+                    return Some(meta)
                 } 
-            } else {
-                error!("broken entry {key} found in spin KVS that cannot be deserialized, deleting...");
-                // delete errornous entry that we cannot deserialize
-                self.store.delete(key)?;
             }            
         }
 
-        match f(key) {
-            Ok(v) => {
-                let exp = now.add(CACHE_EXPIRY_DURATION);
-                if let Ok(expires_at) = exp.duration_since(UNIX_EPOCH){
-                    let item = CacheItem{
-                        expires_at_secs: expires_at.as_secs(),
-                        keys: v.jwks().clone(),
-                        metadata: v.clone()
-                    };
-                    self.store.set(&key, serde_json::to_vec(&item).unwrap())
-                    .expect("storing metadata failed");
-                }
-                Ok(v)
-            },
-            Err(e) => Err(e),
-        }
-    }
+        return None;
 
+    }
+    fn set(&mut self, key: &str, v: CoreProviderMetadata) -> anyhow::Result<()> {
+        let now = SystemTime::now();
+        let exp = now.add(CACHE_EXPIRY_DURATION);
+        if let Ok(expires_at) = exp.duration_since(UNIX_EPOCH){
+            let item = CacheItem{
+                expires_at_secs: expires_at.as_secs(),
+                keys: v.jwks().clone(),
+                metadata: v.clone()
+            };
+            self.store.set(&key, serde_json::to_vec(&item).unwrap())
+            ?;
+            Ok(())
+        } else {
+            Err(anyhow!(""))
+        }
+
+    }
 }
