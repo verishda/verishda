@@ -14,6 +14,7 @@ export global AppUI {
     pure callback login_cancelled();
     pure callback site_selected(string);
     pure callback refresh_requested();
+    pure callback announcement_change_requested(PersonModel, int);
 
     in property <MainWindowState> state: MainWindowState.ShowingSitePresenceView;
     in-out property <[SiteModel]> sites;
@@ -109,6 +110,9 @@ export component MainWindow inherits Window {
             }
             refresh_requested() => {
                 AppUI.refresh_requested();
+            }
+            announcement_change_requested(person, day_index) => {
+                AppUI.announcement_change_requested(person, day_index);
             }
             current_day_index: AppUI.current_day_index;
         }

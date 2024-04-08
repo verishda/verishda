@@ -1,4 +1,4 @@
-import { StandardTableView , HorizontalBox, VerticalBox, ComboBox, Button} from "std-widgets.slint";
+import { StandardTableView , HorizontalBox, VerticalBox, ComboBox, Button, GroupBox} from "std-widgets.slint";
 
 export struct PersonModel {
     name: string,
@@ -40,11 +40,23 @@ component PresenceItem inherits PresenceCell{
     in property <bool> is_present;
     in property <bool> is_announced;
 
-    Text {
-        horizontal-alignment: center;
-        text: is-present ? "P" : 
-            is-announced ? "A" : "-"
-        ;
+    in property <int> day_offset;
+    in property <PersonModel> person;
+
+    callback announcement_change_requested(PersonModel, int);
+
+    TouchArea {
+        x: 0;
+        width: parent.width;
+        Text {
+            horizontal-alignment: center;
+            text: is-present ? "P" : 
+                is-announced ? "A" : "-"
+            ;
+        }
+        clicked => {
+            announcement_change_requested(person, day_offset);
+        }
     }
 }
 
@@ -53,6 +65,8 @@ component PresenceGrid {
     in property <int> current_day_index;
 
     property <[string]> day_names: [@tr("Mo"), @tr("Tu"), @tr("We"), @tr("Th"), @tr("Fr"), @tr("Sa"), @tr("Su")];
+
+    callback announcement_change_requested(PersonModel, int);
 
     function day_index(day_offset: int) -> int {
         Math.mod(day_offset + current-day-index, 7)
@@ -74,6 +88,13 @@ component PresenceGrid {
             for day_offset in 7: PresenceItem {
                 is_present: day_offset == 0 && p.is_present;
                 is-announced: p.announced[day-offset];
+
+                day_offset: day_offset;
+                person: p;
+
+                announcement_change_requested(p, n) => {
+                    root.announcement_change_requested(p, n);
+                }
             }
         }
     }
@@ -108,6 +129,7 @@ export component SitePresenceView inherits Window {
 
     callback site_selected(string);
     callback refresh_requested();
+    callback announcement_change_requested(PersonModel, int);
 
     out property <string> current_site_id <=> panel.current_site_id;
 
@@ -149,6 +171,9 @@ export component SitePresenceView inherits Window {
                 // example data; this will have to be set in code later
                 current-day-index: root.current_day_index;
                 persons: persons;
+                announcement_change_requested(p,n) => {
+                    announcement_change_requested(p,n);
+                }
             }
         
         if persons.length == 0:

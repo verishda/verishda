@@ -94,6 +94,11 @@ fn ui_main() {
         refresh_requested(app_core_clone.clone());
     });
 
+    let app_core_clone = app_core.clone();
+    app_ui.on_announcement_change_requested(move|person, day_index|{
+        log::info!("Announcement change requested: {person:?}, {day_index}");
+    });
+
     let main_window_weak = main_window.as_weak();
     app_core.blocking_lock().on_core_event(move |event|{
         main_window_weak.upgrade_in_event_loop(|main_window|{
