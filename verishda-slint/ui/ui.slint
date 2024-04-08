@@ -1,0 +1,121 @@
+import { CheckBox , TextEdit, VerticalBox, HorizontalBox, Button, LineEdit, ProgressIndicator } from "std-widgets.slint";
+
+import { SitePresenceView, SiteModel, PersonModel } from "mainview.slint";
+
+enum MainWindowState {
+    Startup,
+    ShowingWelcomeView,
+    ShowingSitePresenceView,
+    ShowingWaitingForLoginView,
+}
+
+export global AppUI {
+    pure callback login_triggered();
+    pure callback login_cancelled();
+    pure callback site_selected(string);
+    pure callback refresh_requested();
+    pure callback announcement_change_requested(PersonModel, int);
+
+    in property <MainWindowState> state: MainWindowState.ShowingSitePresenceView;
+    in-out property <[SiteModel]> sites;
+    in property <[string]> site_names;
+    in property <[PersonModel]> persons;
+    in property <int> current_day_index;
+}
+
+
+component FetchProviderMetaView {
+    VerticalBox {
+        Text {
+            text: "Fetching provider metadata...";
+        }
+        ProgressIndicator {
+            height: 20px;
+            indeterminate: true;
+        }
+    }
+}
+component WelcomeView {
+
+
+    VerticalLayout {
+        Image {
+            source: @image-url("verishda-logo.png");
+            width: 300px;
+        }
+        Text {
+            text: "With Verisha, share with your friends when you're at a favourite place. Let them know when you hang out at your favourite cafe, or make your coworkers aware you're at the office.\n\nPlease choose how to connect to a Verishda network:";
+            wrap: word-wrap;
+        }
+        
+        haveCodeCheckBox := CheckBox {
+            text: "I have an invitation code";
+        }
+        
+        if haveCodeCheckBox.checked : VerticalBox {
+            LineEdit {
+                placeholder-text: "xxx-xxx-xxx-xxx";
+            }
+            Button {
+                text: "Use Code";
+            }
+        } 
+       
+        if !haveCodeCheckBox.checked : HorizontalBox {
+           
+            visible: !haveCodeCheckBox.checked;
+            Button {
+                text: "Login / Create Account";
+                clicked => {
+                    AppUI.login-triggered();
+                }
+            }
+        }
+    }
+}
+
+component WaitingForLoginView {
+    VerticalBox {
+        Text {
+            text: "Waiting for login...";
+        }
+        Button {
+            text: "Cancel";
+            clicked => {
+                AppUI.login-cancelled();
+            }
+        }
+    }
+}
+
+export component MainWindow inherits Window {
+    
+    if AppUI.state == MainWindowState.Startup: 
+        fetch_view := FetchProviderMetaView {}
+
+    if AppUI.state == MainWindowState.ShowingWelcomeView:
+        welcome_view := WelcomeView {}
+    
+    if AppUI.state == MainWindowState.ShowingWaitingForLoginView:
+        waiting_for_login_view := WaitingForLoginView {}
+        
+    if AppUI.state == MainWindowState.ShowingSitePresenceView: 
+        site_presence_view := SitePresenceView {
+            width: root.width;
+            sites <=> AppUI.sites;
+            site_names <=> AppUI.site_names;
+            persons <=> AppUI.persons;
+            site_selected(site_id) => {
+                AppUI.site_selected(site_id);
+            }
+            refresh_requested() => {
+                AppUI.refresh_requested();
+            }
+            announcement_change_requested(person, day_index) => {
+                AppUI.announcement_change_requested(person, day_index);
+            }
+            current_day_index: AppUI.current_day_index;
+        }
+
+    
+}
