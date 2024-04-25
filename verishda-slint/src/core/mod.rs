@@ -1,5 +1,6 @@
 use std::{sync::Arc, time::{Duration, Instant}};
 
+use chrono::Days;
 use futures::prelude::*;
 use openidconnect::{core::{CoreAuthenticationFlow, CoreClient, CoreProviderMetadata}, reqwest::async_http_client, AuthorizationCode, ClientId, CsrfToken, IssuerUrl, Nonce, OAuth2TokenResponse, PkceCodeChallenge, PkceCodeVerifier, RedirectUrl, RefreshToken};
 use anyhow::Result;
@@ -10,14 +11,20 @@ use tokio_serde::{formats::SymmetricalJson, SymmetricallyFramed};
 use url::Url;
 use log::*;
 
-use crate::{client, core::location::Location};
+use crate::{client::{self, types::{PresenceAnnouncement, PresenceAnnouncements}}, core::location::Location};
 
 mod location;
 
 const PUBLIC_ISSUER_URL: &str = "https://lemur-5.cloud-iam.com/auth/realms/werischda";
 const PUBLIC_CLIENT_ID: &str = "verishda-windows";
 
-
+#[derive(Default, Clone, Debug)]
+pub enum Announcement {
+    #[default]
+    NotAnnounced,
+    PresenceAnnounced,
+    WeeklyPresenceAnnounced,
+}
 
 #[derive(Debug, Clone)]
 struct Credentials {
@@ -41,7 +48,8 @@ pub enum CoreEvent {
     PresencesChanged(Vec<client::types::Presence>),
 }
 
-const PUBLIC_API_BASE_URL: &str = "https://verishda.shuttleapp.rs";
+//const PUBLIC_API_BASE_URL: &str = "https://verishda.shuttleapp.rs";
+const PUBLIC_API_BASE_URL: &str = "http://127.0.0.1:3000";
 
 #[derive(serde::Serialize, serde::Deserialize)]
 enum LoginPipeMessage {
@@ -53,6 +61,10 @@ enum LoginPipeMessage {
 
 enum AppCoreCommand {
     RefreshPrecences,
+    PublishAnnouncements{
+        site_id: String,
+        announcements: Vec<Announcement>
+    },
     Quit,
 }
 
@@ -98,7 +110,10 @@ impl AppCore {
                                 AppCoreCommand::RefreshPrecences => {
                                     app_core_clone.lock().await.update_own_presence().await;
                                     app_core_clone.lock().await.refresh_presences().await;
-                                }
+                                },
+                                AppCoreCommand::PublishAnnouncements{site_id, announcements} => {
+                                    app_core_clone.lock().await.publish_own_announcements(site_id, announcements).await;
+                                },
                                 AppCoreCommand::Quit => {
                                     break;
                                 }
@@ -126,6 +141,13 @@ impl AppCore {
 
     pub fn refresh(&self) {
         _ = self.command_tx.blocking_send(AppCoreCommand::RefreshPrecences);
+    }
+
+    pub fn announce(&self, site_id: String, announcements: Vec<Announcement>) {
+        _ = self.command_tx.blocking_send(AppCoreCommand::PublishAnnouncements{
+            site_id, 
+            announcements: announcements.clone()
+        });
     }
 
     /// The URI scheme name that is used to register the application as a handler for the redirect URL.
@@ -223,6 +245,34 @@ impl AppCore {
                 Err(e) => {
                     println!("Failed to get sites: {}", e);
                 }
+            }
+        }
+    }
+
+    async fn publish_own_announcements(&mut self, site_id: String, announcements: Vec<Announcement>) {
+        if let Ok(client) = self.create_client().await {
+            let now_date = chrono::Utc::now().naive_utc().date();
+            debug!("{announcements:?}");
+            let announcements = announcements.iter()
+                .enumerate()
+                .map(|(n,a)|
+                    match a {
+                        &Announcement::PresenceAnnounced | &Announcement::WeeklyPresenceAnnounced => {
+                            Some(PresenceAnnouncement{
+                                date: now_date
+                                .checked_add_days(Days::new(n as u64))
+                                .unwrap_or(now_date)
+                                .to_string()
+                            })
+                        },
+                        _ => None
+                    }
+                )
+                .filter_map(|o|o)
+                .collect();
+            
+            if let Err(e) = client.handle_put_announce(&site_id, &PresenceAnnouncements(announcements)).await {
+                log::error!("error while reporting announcement: {e}");
             }
         }
     }

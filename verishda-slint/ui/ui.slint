@@ -10,11 +10,12 @@ enum MainWindowState {
 }
 
 export global AppUI {
+    pure callback using-invitation-code-requested(string);
     pure callback login_triggered();
     pure callback login_cancelled();
     pure callback site_selected(string);
     pure callback refresh_requested();
-    pure callback announcement_change_requested(PersonModel, int);
+    pure callback announcement_change_requested(string, PersonModel, int);
 
     in property <MainWindowState> state: MainWindowState.ShowingSitePresenceView;
     in-out property <[SiteModel]> sites;
@@ -37,6 +38,7 @@ component FetchProviderMetaView {
 }
 component WelcomeView {
 
+    callback using-invitation-code-requested(string);
 
     VerticalLayout {
         Image {
@@ -53,11 +55,14 @@ component WelcomeView {
         }
         
         if haveCodeCheckBox.checked : VerticalBox {
-            LineEdit {
+            code-field := LineEdit {
                 placeholder-text: "xxx-xxx-xxx-xxx";
             }
             Button {
                 text: "Use Code";
+                clicked => {
+                    using-invitation-code-requested(code-field.text)
+                }
             }
         } 
        
@@ -94,7 +99,11 @@ export component MainWindow inherits Window {
         fetch_view := FetchProviderMetaView {}
 
     if AppUI.state == MainWindowState.ShowingWelcomeView:
-        welcome_view := WelcomeView {}
+        welcome_view := WelcomeView {
+            using-invitation-code-requested(code) => {
+                AppUI.using-invitation-code-requested(code);
+            }
+        }
     
     if AppUI.state == MainWindowState.ShowingWaitingForLoginView:
         waiting_for_login_view := WaitingForLoginView {}
@@ -111,8 +120,8 @@ export component MainWindow inherits Window {
             refresh_requested() => {
                 AppUI.refresh_requested();
             }
-            announcement_change_requested(person, day_index) => {
-                AppUI.announcement_change_requested(person, day_index);
+            announcement_change_requested(site_id, person, day_index) => {
+                AppUI.announcement_change_requested(site_id, person, day_index);
             }
             current_day_index: AppUI.current_day_index;
         }

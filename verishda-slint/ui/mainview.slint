@@ -1,10 +1,16 @@
 import { StandardTableView , HorizontalBox, VerticalBox, ComboBox, Button, GroupBox} from "std-widgets.slint";
 
+export enum AnnouncementModel {
+    NotAnnounced,
+    PresenceAnnounced,
+    RecurringPresenceAnnounced,
+}
+
 export struct PersonModel {
     name: string,
     is_self: bool,
     is_present: bool,
-    announced: [bool],
+    announcements: [AnnouncementModel],
 }
 
 export struct SiteModel {
@@ -37,11 +43,11 @@ component PresenceHeaderCell inherits PresenceCell {
 }
 
 component PresenceItem inherits PresenceCell{
+    in property <bool> read_only;
     in property <bool> is_present;
-    in property <bool> is_announced;
-
-    in property <int> day_offset;
-    in property <PersonModel> person;
+    in-out property <PersonModel> person;
+    in property <int> day-offset;
+    property <AnnouncementModel> announcement: person.announcements[day-offset];
 
     callback announcement_change_requested(PersonModel, int);
 
@@ -51,11 +57,29 @@ component PresenceItem inherits PresenceCell{
         Text {
             horizontal-alignment: center;
             text: is-present ? "P" : 
-                is-announced ? "A" : "-"
+                announcement == AnnouncementModel.PresenceAnnounced ? "A" : 
+                announcement == AnnouncementModel.RecurringPresenceAnnounced ? "R" :
+                "-"
             ;
         }
+        double-clicked => {
+            if read_only {
+                return;
+            }
+            // double click switches for recurring announcement
+            announcement = AnnouncementModel.RecurringPresenceAnnounced;
+            announcement_change_requested(person, day-offset);
+        }
         clicked => {
-            announcement_change_requested(person, day_offset);
+            if read_only {
+                return;
+            }
+            // switch between not announced and announcement requested.
+            // recurring announcements are also switched to not announced on click
+            person.announcements[day-offset] = person.announcements[day-offset] == AnnouncementModel.NotAnnounced 
+                ?   AnnouncementModel.PresenceAnnounced
+                :   AnnouncementModel.NotAnnounced;
+            announcement_change_requested(person, day-offset);
         }
     }
 }
@@ -87,13 +111,11 @@ component PresenceGrid {
         
             for day_offset in 7: PresenceItem {
                 is_present: day_offset == 0 && p.is_present;
-                is-announced: p.announced[day-offset];
-
-                day_offset: day_offset;
                 person: p;
-
-                announcement_change_requested(p, n) => {
-                    root.announcement_change_requested(p, n);
+                day-offset: day-offset;
+                read_only: !p.is-self;
+                announcement_change_requested(p, day-offset) => {
+                    root.announcement_change_requested(p, day-offset);
                 }
             }
         }
@@ -105,7 +127,9 @@ export component SitePresenceView inherits Window {
 
     in property <[PersonModel]> persons: [
         {name: "Uwe Pachler", is-present: true, is_self: true},
-        {name: "Horst Cresi", announced: [false, true, false, false, true]},
+        {name: "Horst Cresi", announcements: [
+            AnnouncementModel.NotAnnounced, AnnouncementModel.PresenceAnnounced, AnnouncementModel.NotAnnounced, AnnouncementModel.NotAnnounced, AnnouncementModel.RecurringPresenceAnnounced
+        ]},
         {name: "Brian Nürnberg"},
     ];
 
@@ -129,7 +153,7 @@ export component SitePresenceView inherits Window {
 
     callback site_selected(string);
     callback refresh_requested();
-    callback announcement_change_requested(PersonModel, int);
+    callback announcement_change_requested(string, PersonModel, int);
 
     out property <string> current_site_id <=> panel.current_site_id;
 
@@ -172,7 +196,7 @@ export component SitePresenceView inherits Window {
                 current-day-index: root.current_day_index;
                 persons: persons;
                 announcement_change_requested(p,n) => {
-                    announcement_change_requested(p,n);
+                    announcement_change_requested(current_site_id, p,n);
                 }
             }
         

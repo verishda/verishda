@@ -3,14 +3,14 @@
 
 use clap::Parser;
 
-use std::{env, sync::Arc};
-use chrono::{Datelike, Weekday};
+use std::{collections::HashSet, env, sync::Arc};
+use chrono::{Datelike, Days, NaiveDate};
 use client::types::Presence;
 use tokio::sync::Mutex;
 
 use slint::{Model, ModelRc, VecModel, Weak};
 use tokio::runtime::Handle;
-use crate::client::types::Site;
+use crate::{client::types::Site, core::Announcement};
 
 slint::include_modules!();
 
@@ -65,6 +65,9 @@ fn ui_main() {
     let main_window_weak = main_window.as_weak();
     let app_core_clone = app_core.clone();
     let app_ui = main_window.global::<AppUI>();
+    app_ui.on_using_invitation_code_requested(move|code|{
+        log::info!("requsted using code {code}");
+    });
     app_ui.on_login_triggered(move||{
         start_login(app_core_clone.clone(), main_window_weak.clone());
     });
@@ -95,8 +98,9 @@ fn ui_main() {
     });
 
     let app_core_clone = app_core.clone();
-    app_ui.on_announcement_change_requested(move|person, day_index|{
-        log::info!("Announcement change requested: {person:?}, {day_index}");
+    app_ui.on_announcement_change_requested(move|site_id, person, day_index|{
+        log::info!("Announcement change requested: {site_id}, {person:?}, {day_index}");
+        announce(app_core_clone.clone(), site_id.to_string(), person);
     });
 
     let main_window_weak = main_window.as_weak();
@@ -212,6 +216,16 @@ fn refresh_requested(app_core: Arc<Mutex<AppCore>>) {
     app_core.blocking_lock().refresh();
 }
 
+fn announce(app_core: Arc<Mutex<AppCore>>, site_id: String, person: PersonModel) {
+    let person_announcements = person.announcements.clone();
+    log::debug!("Announcement made on site {site_id:?} as {person:?} with announcements {person_announcements:?}");
+    let announcements = person.announcements.iter()
+    .map(AnnouncementModel::into)
+    .collect();
+    log::debug!("converted as announcements {announcements:?}");
+    app_core.blocking_lock().announce(site_id, announcements);
+}
+
 impl Into<SiteModel> for &Site {
     fn into(self) -> SiteModel {
         SiteModel {
@@ -221,15 +235,47 @@ impl Into<SiteModel> for &Site {
     }
 }
 
-const ALLOWED_WEEKDAYS: [Weekday;5] = [Weekday::Mon, Weekday::Tue, Weekday::Wed, Weekday::Thu, Weekday::Fri];
-const ANNOUCED_DAYS_AHEAD: u32 = 7;
+impl Into<Announcement> for AnnouncementModel {
+    fn into(self) -> Announcement {
+        match self {
+            AnnouncementModel::NotAnnounced => Announcement::NotAnnounced,
+            AnnouncementModel::PresenceAnnounced => Announcement::PresenceAnnounced,
+            AnnouncementModel::RecurringPresenceAnnounced => Announcement::WeeklyPresenceAnnounced,
+        }
+    }
+}
+
+const ANNOUNCED_DAYS_AHEAD: u32 = 7;
 
 fn to_person_model(presence: &Presence) -> PersonModel {
+    let dates = presence.announced_dates.iter()
+    .filter_map(|s|NaiveDate::parse_from_str(s, "%Y-%m-%d").ok())
+    .collect::<HashSet<_>>();
+    
+
+    let now_date = chrono::Utc::now().naive_utc().date();
+
+    let announcements = (0..ANNOUNCED_DAYS_AHEAD).into_iter()
+        .map(|n|{
+            let is_announced = 
+            now_date
+            .checked_add_days(Days::new(n as u64))
+            .is_some_and(|date|dates.contains(&date));
+            if is_announced {
+                AnnouncementModel::PresenceAnnounced
+            } else {
+                AnnouncementModel::NotAnnounced
+            }
+        })
+        .collect::<Vec<_>>();
+    
+    log::debug!("announcements in person: {announcements:?}");
+
     PersonModel {
         name: presence.logged_as_name.clone().into(),
         is_present: presence.currently_present,
         // TODO! implement this
-        announced: ModelRc::new(VecModel::from(vec![false, false, false, false, false])),
-        is_self: false,
+        announcements: ModelRc::new(VecModel::from(announcements)),
+        is_self: presence.is_self,
     }
 }

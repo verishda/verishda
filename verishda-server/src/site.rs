@@ -21,6 +21,7 @@ pub(super) struct Presence
 where Self: Send
 {
     pub logged_as_name: String,
+    pub is_self: bool,
     pub currently_present: bool,
     pub announced_dates: Vec<NaiveDate>,
 }
@@ -67,7 +68,7 @@ pub(super) async fn hello_site(pg: &mut PgConnection, user_id: &str, logged_as_n
     Ok(())
 }
 
-pub(super) async fn get_presence_on_site(pg: &mut PgConnection, site_id: &str) -> Result<Vec<Presence>> {
+pub(super) async fn get_presence_on_site(pg: &mut PgConnection, user_id: &str, logged_as_name: &str, site_id: &str) -> Result<Vec<Presence>> {
 
     let stmt = String::new() +
     "SELECT u.user_id, u.logged_as_name, to_char(a.present_on, 'YYYY-MM-DD')
@@ -80,7 +81,7 @@ pub(super) async fn get_presence_on_site(pg: &mut PgConnection, site_id: &str) -
     FROM logged_into_site AS s JOIN user_info AS u ON s.user_id=u.user_id 
     WHERE s.site_id=$1 AND u.last_seen >= now() - INTERVAL '10 minutes'";
 
-    let presences = sqlx::query(&stmt)
+    let mut presences_map = sqlx::query(&stmt)
     .bind(&site_id.to_string())
     .fetch_all(pg).await?
     .iter()
@@ -109,11 +110,25 @@ pub(super) async fn get_presence_on_site(pg: &mut PgConnection, site_id: &str) -
         }
 
         m
-    })
-    .values()
-    .map(|p|p.clone())
-    .collect()
-    ;
+    });
+
+    let mut self_presence = match presences_map.remove(user_id) {
+        Some(p) => p,
+        None => Presence{
+            currently_present: false,
+            logged_as_name: logged_as_name.to_string(),
+            announced_dates: Vec::new(),
+            ..Default::default()
+        },
+    };
+    self_presence.is_self = true;
+
+    let presences = std::iter::once(self_presence)
+    .chain(
+        presences_map.values()
+        .map(Presence::clone)
+    )
+    .collect();
 
     Ok(presences)
 }

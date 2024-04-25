@@ -173,10 +173,10 @@ async fn handle_get_swagger_ui(Path(path): Path<String>) -> Result<Response<Full
 }
 
 #[debug_handler]
-async fn handle_get_sites_siteid_presence(DbCon(mut con): DbCon, _: State<VerishdaState>, _auth_info: AuthInfo, Path(site_id): Path<String>) -> Result<Json<Vec<Presence>>, HandlerError> 
+async fn handle_get_sites_siteid_presence(DbCon(mut con): DbCon, _: State<VerishdaState>, auth_info: AuthInfo, Path(site_id): Path<String>) -> Result<Json<Vec<Presence>>, HandlerError> 
 
 {
-    let presences = site::get_presence_on_site(&mut con, &site_id).await?;
+    let presences = site::get_presence_on_site(&mut con, &auth_info.subject, &to_logged_as_name(&auth_info), &site_id).await?;
     Ok(Json(presences))
 }
 

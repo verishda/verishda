@@ -135,12 +135,15 @@ components:
         announcements will not be delivered.
       required:
         - logged_as_name
+        - is_self
         - currently_present
         - announced_dates
       properties:
         logged_as_name:
           type: string
           example: 'Maxi Mustermax'
+        is_self:
+          type: bool
         currently_present:
           type: boolean
           description: >-
