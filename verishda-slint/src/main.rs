@@ -2,8 +2,9 @@
 #[cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 use clap::Parser;
+use tray_item::{IconSource, TrayItem};
 
-use std::{collections::HashSet, env, sync::Arc};
+use std::{collections::HashSet, env, sync::Arc, thread};
 use chrono::{Datelike, Days, NaiveDate};
 use client::types::Presence;
 use tokio::sync::Mutex;
@@ -141,6 +142,19 @@ fn ui_main() {
         }).unwrap();        
     });
 
+    let main_window_weak = std::sync::Mutex::new(main_window.as_weak());
+    let _tray = init_systray(
+        move||{
+            main_window_weak.lock().unwrap().upgrade_in_event_loop(|main_window|{
+                let _ = main_window.show();
+            }).unwrap();
+        },
+        ||{
+            let _ = slint::quit_event_loop();
+        }
+    );
+
+
     main_window.show().unwrap();
 
     let main_window_weak = main_window.as_weak();
@@ -148,10 +162,32 @@ fn ui_main() {
     start_fetch_provider_metadata(main_window_weak.clone(), app_core_clone);
 
     // NOT: will need to change to slint::run_event_loop_until_quit() when we have a systray icon
-    slint::run_event_loop().unwrap();
+    slint::run_event_loop_until_quit().unwrap();
 
     app_core.blocking_lock().quit();
 
+}
+
+fn init_systray<FO,FQ>(open_handler: FO, quit_handler: FQ) -> TrayItem 
+where
+    FO: Fn() + Send + Sync + 'static,
+    FQ: Fn() + Send + Sync + 'static,
+{
+    let mut tray = TrayItem::new(
+        "Verishda",
+        IconSource::Resource("tray-default"),
+    )
+    .unwrap();
+
+    tray.add_label("Verishda").unwrap();
+
+    tray.add_menu_item("Open", open_handler)
+    .unwrap();
+
+    tray.add_menu_item("Quit", quit_handler)
+    .unwrap();
+
+    tray
 }
 
 fn start_fetch_provider_metadata(main_window: Weak<MainWindow>, app_core: Arc<Mutex<AppCore>>) {

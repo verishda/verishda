@@ -17,7 +17,7 @@ export global AppUI {
     pure callback refresh_requested();
     pure callback announcement_change_requested(string, PersonModel, int);
 
-    in property <MainWindowState> state: MainWindowState.ShowingSitePresenceView;
+    in property <MainWindowState> state: MainWindowState.ShowingWelcomeView;
     in-out property <[SiteModel]> sites;
     in property <[string]> site_names;
     in property <[PersonModel]> persons;
@@ -94,12 +94,15 @@ component WaitingForLoginView {
 }
 
 export component MainWindow inherits Window {
-    
+    title: "Verishda";
+
     if AppUI.state == MainWindowState.Startup: 
         fetch_view := FetchProviderMetaView {}
 
     if AppUI.state == MainWindowState.ShowingWelcomeView:
         welcome_view := WelcomeView {
+            y: 0px;
+            width: root.width;
             using-invitation-code-requested(code) => {
                 AppUI.using-invitation-code-requested(code);
             }

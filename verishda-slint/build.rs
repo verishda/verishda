@@ -8,6 +8,8 @@ fn main() {
     run_progenitor();
 
     do_embed_manifest();
+
+    do_embed_resources();
 }
 
 fn run_progenitor() {
@@ -37,4 +39,8 @@ fn do_embed_manifest() {
         embed_manifest(new_manifest("Verishda"))
             .expect("unable to embed manifest file");
     } 
+}
+
+fn do_embed_resources() {
+    embed_resource::compile("ui/icons/tray.rc", embed_resource::NONE);
 }
