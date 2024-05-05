@@ -9,6 +9,7 @@ externalDocs:
   description: Find out more about Swagger
   url: https://github.com/werischda/werischda
 servers:
+  - url: /
   - url: https://verishda.fermyon.app/
   - url: https://verishda.shuttleapp.rs/
   - url: http://127.0.0.1:3000/
@@ -143,7 +144,7 @@ components:
           type: string
           example: 'Maxi Mustermax'
         is_self:
-          type: bool
+          type: boolean
         currently_present:
           type: boolean
           description: >-
@@ -173,6 +174,8 @@ components:
           description: Date for which the user announces their presence
           type: string
           format: localdate
+      required:
+      - date
   securitySchemes:
     petstore_auth:
       type: oauth2

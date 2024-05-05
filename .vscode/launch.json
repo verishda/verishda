@@ -1,0 +1,138 @@
+{
+    // Use IntelliSense to learn about possible attributes.
+    // Hover to view descriptions of existing attributes.
+    // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug unit tests in library 'verishda'",
+            "cargo": {
+                "args": [
+                    "test",
+                    "--no-run",
+                    "--lib",
+                    "--package=verishda"
+                ],
+                "filter": {
+                    "name": "verishda",
+                    "kind": "lib"
+                }
+            },
+            "args": [],
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug executable 'verishda-standalone'",
+            "cargo": {
+                "args": [
+                    "build",
+                    "--bin=verishda-standalone",
+                    "--package=verishda"
+                ],
+                "filter": {
+                    "name": "verishda-standalone",
+                    "kind": "bin"
+                }
+            },
+            "args": [],
+            "cwd": "${workspaceFolder}/verishda-server"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug unit tests in executable 'verishda-standalone'",
+            "cargo": {
+                "args": [
+                    "test",
+                    "--no-run",
+                    "--bin=verishda-standalone",
+                    "--package=verishda"
+                ],
+                "filter": {
+                    "name": "verishda-standalone",
+                    "kind": "bin"
+                }
+            },
+            "args": [],
+            "cwd": "${workspaceFolder}/verishda-server"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug executable 'verishda'",
+            "cargo": {
+                "args": [
+                    "build",
+                    "--bin=verishda",
+                    "--package=verishda"
+                ],
+                "filter": {
+                    "name": "verishda",
+                    "kind": "bin"
+                }
+            },
+            "args": [],
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug unit tests in executable 'verishda'",
+            "cargo": {
+                "args": [
+                    "test",
+                    "--no-run",
+                    "--bin=verishda",
+                    "--package=verishda"
+                ],
+                "filter": {
+                    "name": "verishda",
+                    "kind": "bin"
+                }
+            },
+            "args": [],
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug executable 'verishda-slint'",
+            "cargo": {
+                "args": [
+                    "build",
+                    "--bin=verishda-slint",
+                    "--package=verishda-slint"
+                ],
+                "filter": {
+                    "name": "verishda-slint",
+                    "kind": "bin"
+                }
+            },
+            "args": [],
+            "cwd": "${workspaceFolder}/verishda-slint"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug unit tests in executable 'verishda-slint'",
+            "cargo": {
+                "args": [
+                    "test",
+                    "--no-run",
+                    "--bin=verishda-slint",
+                    "--package=verishda-slint"
+                ],
+                "filter": {
+                    "name": "verishda-slint",
+                    "kind": "bin"
+                }
+            },
+            "args": [],
+            "cwd": "${workspaceFolder}/verishda-slint"
+        }
+    ]
+}

@@ -147,7 +147,7 @@ async fn handle_get_fallback(Scheme(scheme): Scheme, Host(host): Host, OriginalU
 async fn handle_get_swagger_spec() -> Result<Response<Full<Bytes>>, HandlerError> {
     let resp = Response::builder()
     .status(200)
-    .body(Full::new(Bytes::copy_from_slice(SWAGGER_SPEC.get_or_init(||swagger_ui::swagger_spec_file!("./verishda.yaml")).content)))
+    .body(Full::new(Bytes::copy_from_slice(SWAGGER_SPEC.get_or_init(||swagger_ui::swagger_spec_file!("../../verishda.yaml")).content)))
     ?;
 
     Ok(resp)

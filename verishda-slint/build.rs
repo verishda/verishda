@@ -13,7 +13,7 @@ fn main() {
 }
 
 fn run_progenitor() {
-    let src = "openapi.yaml";
+    let src = "../verishda.yaml";
     println!("cargo:rerun-if-changed={src}");
     let file = std::fs::File::open(src).unwrap();
     let spec = serde_yaml::from_reader(file).unwrap();
