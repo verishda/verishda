@@ -1,11 +1,15 @@
-use std::{sync::Arc, time::{Duration, Instant}};
+use std::{path::{Path, PathBuf}, sync::Arc, time::{Duration, Instant}};
 
 use chrono::Days;
 use futures::prelude::*;
 use openidconnect::{core::{CoreAuthenticationFlow, CoreClient, CoreProviderMetadata}, reqwest::async_http_client, AuthorizationCode, ClientId, CsrfToken, IssuerUrl, Nonce, OAuth2TokenResponse, PkceCodeChallenge, PkceCodeVerifier, RedirectUrl, RefreshToken};
 use anyhow::Result;
 use reqwest::{header::HeaderMap, StatusCode};
-use tokio::{net::windows::named_pipe::{ClientOptions, NamedPipeServer, ServerOptions}, sync::Mutex};
+#[cfg(windows)]
+use tokio::net::windows::named_pipe::{ClientOptions, ServerOptions};
+#[cfg(unix)]
+use tokio::net::{UnixListener, UnixStream};
+use tokio::sync::Mutex;
 use tokio_util::codec::{FramedWrite, FramedRead, LengthDelimitedCodec};
 use tokio_serde::{formats::SymmetricalJson, SymmetricallyFramed};
 use url::Url;
@@ -48,8 +52,8 @@ pub enum CoreEvent {
     PresencesChanged(Vec<client::types::Presence>),
 }
 
-//const PUBLIC_API_BASE_URL: &str = "https://verishda.shuttleapp.rs";
-const PUBLIC_API_BASE_URL: &str = "http://127.0.0.1:3000";
+const PUBLIC_API_BASE_URL: &str = "https://verishda.shuttleapp.rs";
+//const PUBLIC_API_BASE_URL: &str = "http://127.0.0.1:3000";
 
 #[derive(serde::Serialize, serde::Deserialize)]
 enum LoginPipeMessage {
@@ -293,8 +297,24 @@ impl AppCore {
         Self::uri_scheme().to_owned() + "://exchange-token"
     }
 
-    fn pipe_name() -> String {
-        format!("\\\\.\\pipe\\{}", Self::uri_scheme())
+    fn setings_path() -> PathBuf {
+        let home = std::env::var("HOME").unwrap();
+        let home = std::path::PathBuf::from(home);
+        let settings_path = home.join(format!(".{}", Self::uri_scheme()));
+        settings_path
+    }
+
+    fn pipe_path() -> PathBuf {
+        #[cfg(windows)]
+        {
+            PathBuf::from(format!("\\\\.\\pipe\\{}", Self::uri_scheme()))
+        }
+        #[cfg(unix)]
+        {
+            let mut settings_path = Self::setings_path();
+            std::fs::create_dir(&settings_path);
+            settings_path.join("login")
+        }
     }
 
     pub fn start_login<F>(app_core: Arc<Mutex<AppCore>>, finished_callback: F) -> Result<Url> 
@@ -303,12 +323,50 @@ impl AppCore {
         let (auth_url, pkce_verifier) = app_core.blocking_lock().authorization_url();
 
         // start named pipe server
-        let pipe_server = ServerOptions::new()
-            .first_pipe_instance(true)
-            .create(Self::pipe_name())?;
+        let pipe_server;
+        #[cfg(windows)]
+        {
+            pipe_server = ServerOptions::new()
+                .first_pipe_instance(true)
+                .create(Self::pipe_path())?;
+        }
+
+        
+        #[cfg(unix)] 
+        {
+            pipe_server = UnixListener::bind(Self::pipe_path())?
+        }      
         
         tokio::spawn(async move {
-            let r = Self::read_login_pipe_message(app_core, pkce_verifier, pipe_server).await;
+            log::info!("Waiting for login pipe message");
+
+            let pipe;
+            #[cfg(windows)]
+            {
+                if let Err(e) = pipe_server.connect().await {
+                    log::error!("could not connect to named pipe: {e}");
+                    finished_callback(false);
+                    return;
+                } else {
+                    pipe = pipe_server;
+                }
+            };
+            #[cfg(unix)]
+            {
+                pipe = match pipe_server.accept().await {
+                    Err(e) => {
+                        log::error!("failed to connect to unix socket");
+                        finished_callback(false);
+                        return;
+                    }
+                    Ok((pipe,_)) => {
+                        pipe
+                    }
+                };
+            };
+
+            let r = Self::read_login_pipe_message(app_core, pkce_verifier, pipe).await;
+
             let logged_in = match r {
                 Err(e) => {
                     log::error!("Error reading login pipe message: {}", e);
@@ -329,8 +387,18 @@ impl AppCore {
     }
 
     async fn write_pipe_message(message: LoginPipeMessage) -> Result<()> {
-        let mut pipe_client = ClientOptions::new()
-        .open(Self::pipe_name())?;
+        let mut pipe_client;
+
+        #[cfg(windows)]
+        {
+            pipe_client = ClientOptions::new()
+            .open(Self::pipe_path())?;
+        }
+
+        #[cfg(unix)]
+        {
+            pipe_client = UnixStream::connect(Self::pipe_path()).await?;
+        }
         let frame = FramedWrite::new(&mut pipe_client, LengthDelimitedCodec::new());
         let mut writer = SymmetricallyFramed::new(frame, SymmetricalJson::default());
         writer.send(&message).await.unwrap();
@@ -338,12 +406,10 @@ impl AppCore {
         Ok(())
     }
 
-    async fn read_login_pipe_message(app_core: Arc<Mutex<AppCore>>, pkce_verifier: PkceCodeVerifier, mut pipe_server: NamedPipeServer) -> Result<bool> {
-        log::info!("Waiting for login pipe message");
-        pipe_server.connect().await?;
-
-        let frame = FramedRead::new(&mut pipe_server, LengthDelimitedCodec::new());
-        let mut reader = tokio_serde::SymmetricallyFramed::new(frame, SymmetricalJson::<LoginPipeMessage>::default());
+    async fn read_login_pipe_message(app_core: Arc<Mutex<AppCore>>, pkce_verifier: PkceCodeVerifier, pipe_server: impl tokio::io::AsyncRead) -> Result<bool> {
+        let frame = FramedRead::new(pipe_server, LengthDelimitedCodec::new());
+        let reader = tokio_serde::SymmetricallyFramed::new(frame, SymmetricalJson::<LoginPipeMessage>::default());
+        tokio::pin!(reader);
         loop {
             if let Some(msg) = reader.try_next().await? {
                 match msg {

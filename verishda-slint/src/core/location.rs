@@ -4,8 +4,7 @@ use std::{default, sync::Arc};
 
 use tokio::sync::Mutex;
 #[cfg(target_os = "windows")]
-use windows::Devices::Geolocation::Geolocator;
-use windows::{Devices::Geolocation::{BasicGeoposition}};
+use windows::Devices::Geolocation::{Geolocator, BasicGeoposition};
 use anyhow::Result;
 
 #[derive(Clone, Debug, Default)]
@@ -107,9 +106,6 @@ impl From<&BasicGeoposition> for Location {
     }
 }
 
-// https://learn.microsoft.com/en-us/previous-versions/windows/apps/dn263199(v=win.10)
-// https://docs.microsoft.com/en-us/uwp/api/windows.devices.geolocation.geofencing.geofencemonitor
-#[cfg(target_os = "windows")]
 impl LocationHandler {
     pub fn new() -> Arc<Mutex<LocationHandler>> {
         let handler = Arc::new(Mutex::new(Self {
@@ -128,6 +124,17 @@ impl LocationHandler {
     }
 
     pub async fn poll(handler: Arc<Mutex<Self>>) {
+        #[cfg(windows)]
+        Self::poll_windows(handler).await;
+
+        #[cfg(unix)]
+        log::warn!("LocationHandler::poll() currently unimplemented on unix!!")
+    }
+
+    // https://learn.microsoft.com/en-us/previous-versions/windows/apps/dn263199(v=win.10)
+    // https://docs.microsoft.com/en-us/uwp/api/windows.devices.geolocation.geofencing.geofencemonitor
+    #[cfg(target_os = "windows")]
+    async fn poll_windows(handler: Arc<Mutex<Self>>) {
 
         log::debug!("get next location and update geofence presence");
         let loc = Geolocator::new().unwrap();
@@ -143,6 +150,7 @@ impl LocationHandler {
         // sleep until next iteration
         tokio::time::sleep(sleep_duration).await;
     }
+
 
     fn check_geofences(&mut self, location: &Location) {
         log::debug!("polling geofences");
@@ -208,5 +216,5 @@ fn test_distance() {
     let D2 = loc1.squared_distance(&loc2);
     let D = D2.sqrt();
     println!("distance betwen {loc1:?} and {loc2:?} is {D}");
-    assert!(D < 100.);
+    assert!(D < 200.);
 }

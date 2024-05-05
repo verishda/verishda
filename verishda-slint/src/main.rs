@@ -1,8 +1,7 @@
 
-#[cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
+#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 use clap::Parser;
-use tray_item::{IconSource, TrayItem};
 
 use std::{collections::HashSet, env, sync::Arc, thread};
 use chrono::{Datelike, Days, NaiveDate};
@@ -143,6 +142,8 @@ fn ui_main() {
     });
 
     let main_window_weak = std::sync::Mutex::new(main_window.as_weak());
+
+    #[cfg(windows)]
     let _tray = init_systray(
         move||{
             main_window_weak.lock().unwrap().upgrade_in_event_loop(|main_window|{
@@ -168,11 +169,14 @@ fn ui_main() {
 
 }
 
-fn init_systray<FO,FQ>(open_handler: FO, quit_handler: FQ) -> TrayItem 
+#[cfg(windows)]
+fn init_systray<FO,FQ>(open_handler: FO, quit_handler: FQ) -> tray_item::TrayItem 
 where
     FO: Fn() + Send + Sync + 'static,
     FQ: Fn() + Send + Sync + 'static,
 {
+    use tray_item::*;
+    
     let mut tray = TrayItem::new(
         "Verishda",
         IconSource::Resource("tray-default"),
