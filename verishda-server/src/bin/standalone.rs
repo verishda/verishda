@@ -43,13 +43,11 @@ async fn main(){
     let router = verishda::build_router(pool, config.clone());
     
     let bind_address = std::env::var("BIND_ADDRESS")
-    .unwrap_or_else(|_|"127.0.0.1:3000".to_string())
-    .parse()
-    .unwrap();
+    .unwrap_or_else(|_|"127.0.0.1:3000".to_string());
 
+    let listener = tokio::net::TcpListener::bind(&bind_address).await.unwrap();
     log::info!("binding, server available under http://{bind_address}");
-    axum::Server::bind(&bind_address)
-    .serve(router.into_make_service())
+    axum::serve(listener, router.into_make_service())
     .await
     .unwrap();
 }

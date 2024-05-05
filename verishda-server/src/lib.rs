@@ -2,10 +2,12 @@ use std::cell::OnceCell;
 use std::ops::{Deref, DerefMut};
 
 use anyhow::{anyhow, Result};
+use axum::body::Body;
 use axum::debug_handler;
 use axum::extract::{OriginalUri, Host, FromRef, State};
-use axum::{Router, routing::{get, post, put}, response::{Response, IntoResponse, Redirect, Html}, Json, body::{Full, Empty}, extract::{Path, FromRequestParts, rejection::TypedHeaderRejectionReason}, async_trait, TypedHeader, headers::{Authorization, authorization::Bearer}, RequestPartsExt, Extension};
-
+use axum::{Router, routing::{get, post, put}, response::{Response, IntoResponse, Redirect, Html}, Json, extract::{Path, FromRequestParts}, async_trait, RequestPartsExt, Extension};
+use axum_extra::{TypedHeader, headers::{Authorization, authorization::Bearer}};
+use axum_extra::typed_header::TypedHeaderRejectionReason;
 use bytes::Bytes;
 use config::Config;
 use error::HandlerError;
@@ -144,17 +146,17 @@ async fn handle_get_fallback(Scheme(scheme): Scheme, Host(host): Host, OriginalU
     Ok(Redirect::temporary(&swagger_ui_url))
 }
 
-async fn handle_get_swagger_spec() -> Result<Response<Full<Bytes>>, HandlerError> {
+async fn handle_get_swagger_spec() -> Result<Response<Body>, HandlerError> {
     let resp = Response::builder()
     .status(200)
-    .body(Full::new(Bytes::copy_from_slice(SWAGGER_SPEC.get_or_init(||swagger_ui::swagger_spec_file!("../../verishda.yaml")).content)))
+    .body(Body::from(Bytes::copy_from_slice(SWAGGER_SPEC.get_or_init(||swagger_ui::swagger_spec_file!("../../verishda.yaml")).content)))
     ?;
 
     Ok(resp)
 }
 
 #[debug_handler]
-async fn handle_get_swagger_ui(Path(path): Path<String>) -> Result<Response<Full<Bytes>>, HandlerError>{
+async fn handle_get_swagger_ui(Path(path): Path<String>) -> Result<Response<Body>, HandlerError>{
 
     let resp = match swagger_ui::Assets::get(&path) {
         Some(data) => {
@@ -162,11 +164,11 @@ async fn handle_get_swagger_ui(Path(path): Path<String>) -> Result<Response<Full
             http::Response::builder()
             .status(200)
             .header("Content-Type", mime.to_string())
-            .body(Full::new(bytes::Bytes::copy_from_slice(data.as_ref())))?
+            .body(Body::from(bytes::Bytes::copy_from_slice(data.as_ref())))?
         },
         None => http::Response::builder()
             .status(404)
-            .body(Full::new(bytes::Bytes::from("404 Not Found".as_bytes())))?
+            .body(Body::from(bytes::Bytes::from("404 Not Found".as_bytes())))?
     };
 
     Ok(resp)
@@ -209,7 +211,7 @@ async fn handle_put_announce(DbCon(mut con): DbCon, _: State<VerishdaState>, aut
 
     Ok(Response::builder()
         .status(StatusCode::NO_CONTENT)
-        .body(Empty::new())?
+        .body(Body::empty())?
     )
 }
 
