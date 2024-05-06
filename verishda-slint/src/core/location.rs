@@ -1,23 +1,21 @@
-
-
 use std::{default, sync::Arc};
 
+use anyhow::Result;
 use tokio::sync::Mutex;
 #[cfg(target_os = "windows")]
-use windows::Devices::Geolocation::{Geolocator, BasicGeoposition};
-use anyhow::Result;
+use windows::Devices::Geolocation::{BasicGeoposition, Geolocator};
 
 #[derive(Clone, Debug, Default)]
-pub struct Location{
+pub struct Location {
     latitude: f64,
-    longitude: f64
+    longitude: f64,
 }
 
 impl Location {
     pub fn new(latitude: f64, longitude: f64) -> Self {
         Self {
             latitude,
-            longitude
+            longitude,
         }
     }
 
@@ -48,10 +46,10 @@ impl Location {
         let Δφ = φ2 - φ1;
         let Δλ = λ2 - λ1;
 
-        let R =  6378100.0f64; // radius of the earth in km
+        let R = 6378100.0f64; // radius of the earth in km
 
         // the squared distance is D2
-        let D2 = R.powi(2) * (Δφ.powi(2) + (φm.cos()*Δλ).powi(2));
+        let D2 = R.powi(2) * (Δφ.powi(2) + (φm.cos() * Δλ).powi(2));
         D2
     }
 }
@@ -59,7 +57,7 @@ impl Location {
 #[derive(Debug)]
 struct GeoCircle {
     center: Location,
-    radius: f64
+    radius: f64,
 }
 
 impl GeoCircle {
@@ -75,7 +73,7 @@ impl GeoCircle {
         // Replacing D with it's actual formula yields:
         //
         // r < R * sqrt(Δφ^2 + (cos(φm)*Δλ)^2)
-        // 
+        //
         // Because we only want to know if r < D, and calculating
         // square roots is expensive, we can also compare the
         // squares:
@@ -89,8 +87,8 @@ impl GeoCircle {
     }
 }
 
-#[derive(Debug,Default)]
-pub(super) struct LocationHandler{
+#[derive(Debug, Default)]
+pub(super) struct LocationHandler {
     shapes: std::collections::HashMap<String, GeoCircle>,
     poll_interval_seconds: u32,
     in_fences: std::collections::HashSet<String>,
@@ -101,7 +99,7 @@ impl From<&BasicGeoposition> for Location {
     fn from(pos: &BasicGeoposition) -> Self {
         Location {
             latitude: pos.Latitude,
-            longitude: pos.Longitude
+            longitude: pos.Longitude,
         }
     }
 }
@@ -114,7 +112,7 @@ impl LocationHandler {
         }));
 
         let handler_clone = handler.clone();
-        tokio::spawn(async move{
+        tokio::spawn(async move {
             loop {
                 LocationHandler::poll(handler_clone.clone()).await;
             }
@@ -123,34 +121,40 @@ impl LocationHandler {
         handler
     }
 
-    pub async fn poll(handler: Arc<Mutex<Self>>) {
-        #[cfg(windows)]
-        Self::poll_windows(handler).await;
-
-        #[cfg(unix)]
-        log::warn!("LocationHandler::poll() currently unimplemented on unix!!")
-    }
-
     // https://learn.microsoft.com/en-us/previous-versions/windows/apps/dn263199(v=win.10)
     // https://docs.microsoft.com/en-us/uwp/api/windows.devices.geolocation.geofencing.geofencemonitor
-    #[cfg(target_os = "windows")]
-    async fn poll_windows(handler: Arc<Mutex<Self>>) {
-
-        log::debug!("get next location and update geofence presence");
+    #[cfg(windows)]
+    async fn poll_location() -> Location {
         let loc = Geolocator::new().unwrap();
         let pos = loc.GetGeopositionAsync().unwrap().await.unwrap();
-        let location = Location::from(&pos.Coordinate().unwrap().Point().unwrap().Position().unwrap());
+        Location::from(
+            &pos.Coordinate()
+                .unwrap()
+                .Point()
+                .unwrap()
+                .Position()
+                .unwrap(),
+        );
         log::debug!("location: {location:?}");
+    }
+
+    #[cfg(unix)]
+    async fn poll_location() -> Location {
+        log::warn!("LocationHandler::poll() currently unimplemented on unix!!");
+        Location::default()
+    }
+
+    pub async fn poll(handler: Arc<Mutex<Self>>) {
+        let location = Self::poll_location().await;
 
         let mut handler = handler.lock().await;
         handler.check_geofences(&location);
         let sleep_duration = std::time::Duration::from_secs(handler.poll_interval_seconds as u64);
-        drop(handler);  // dropping handler guard to release lock, avoiding deadlock
+        drop(handler); // dropping handler guard to release lock, avoiding deadlock
 
         // sleep until next iteration
         tokio::time::sleep(sleep_duration).await;
     }
-
 
     fn check_geofences(&mut self, location: &Location) {
         log::debug!("polling geofences");
@@ -171,11 +175,19 @@ impl LocationHandler {
         log::debug!("in_fences: {:?}", self.in_fences);
     }
 
-    pub fn add_geofence_circle(&mut self, id: &str, location: &Location, radius: f64) -> Result<()> {
-        self.shapes.insert(id.to_string(), GeoCircle {
-            center: location.clone(),
-            radius
-        });
+    pub fn add_geofence_circle(
+        &mut self,
+        id: &str,
+        location: &Location,
+        radius: f64,
+    ) -> Result<()> {
+        self.shapes.insert(
+            id.to_string(),
+            GeoCircle {
+                center: location.clone(),
+                radius,
+            },
+        );
         Ok(())
     }
 
@@ -191,15 +203,13 @@ impl LocationHandler {
     pub fn get_occupied_geofences(&self) -> Vec<String> {
         self.in_fences.iter().cloned().collect()
     }
-   
 }
-
 
 #[test]
 fn test_geo_circle() {
     let circle = GeoCircle {
         center: Location::new(0.0, 0.0),
-        radius: 100.0
+        radius: 100.0,
     };
 
     let inside = Location::new(0.0, 0.0);
@@ -211,8 +221,14 @@ fn test_geo_circle() {
 
 #[test]
 fn test_distance() {
-    let loc1 = Location { latitude: 48.48870120526846, longitude: 9.218084635543407 };
-    let loc2 =  Location { latitude: 48.4901237487793, longitude: 9.21942138671875 };
+    let loc1 = Location {
+        latitude: 48.48870120526846,
+        longitude: 9.218084635543407,
+    };
+    let loc2 = Location {
+        latitude: 48.4901237487793,
+        longitude: 9.21942138671875,
+    };
     let D2 = loc1.squared_distance(&loc2);
     let D = D2.sqrt();
     println!("distance betwen {loc1:?} and {loc2:?} is {D}");
