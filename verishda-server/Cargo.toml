@@ -34,7 +34,7 @@ dotenv = "0.15"
 
 serde = {version="1.0.160", features=["derive"]}
 serde_json = "1.0.96"
-openidconnect = {version="3.0.0"}
+openidconnect = {version="3.5.0"}
 
 # IMPORTANT: There are build issues on Windows, see https://crates.io/crates/jwt-simple/0.12.9 "Working around compilation issues with the boring crate"
 jwt-simple = {version="0.12.9", default-features=false, features=["pure-rust"]}
