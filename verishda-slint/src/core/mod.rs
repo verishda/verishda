@@ -1,10 +1,11 @@
-use std::{path::{Path, PathBuf}, sync::Arc, time::{Duration, Instant}};
+use std::{path::PathBuf, sync::Arc, time::{Duration, Instant}};
 
 use chrono::Days;
 use futures::prelude::*;
 use openidconnect::{core::{CoreAuthenticationFlow, CoreClient, CoreProviderMetadata}, reqwest::async_http_client, AuthorizationCode, ClientId, CsrfToken, IssuerUrl, Nonce, OAuth2TokenResponse, PkceCodeChallenge, PkceCodeVerifier, RedirectUrl, RefreshToken};
 use anyhow::Result;
-use reqwest::{header::HeaderMap, StatusCode};
+
+use reqwest::header::HeaderMap;
 #[cfg(windows)]
 use tokio::net::windows::named_pipe::{ClientOptions, ServerOptions};
 #[cfg(unix)]
@@ -15,7 +16,8 @@ use tokio_serde::{formats::SymmetricalJson, SymmetricallyFramed};
 use url::Url;
 use log::*;
 
-use crate::{client::{self, types::{PresenceAnnouncement, PresenceAnnouncements}}, core::location::Location};
+use verishda_dto::{self, types::{PresenceAnnouncement, PresenceAnnouncementKind, PresenceAnnouncements}};
+use crate::core::location::Location;
 
 mod location;
 
@@ -48,8 +50,8 @@ pub struct AppCore {
 }
 
 pub enum CoreEvent {
-    SitesUpdated(Vec<client::types::Site>),
-    PresencesChanged(Vec<client::types::Presence>),
+    SitesUpdated(Vec<verishda_dto::types::Site>),
+    PresencesChanged(Vec<verishda_dto::types::Presence>),
 }
 
 const PUBLIC_API_BASE_URL: &str = "https://verishda.shuttleapp.rs";
@@ -168,7 +170,7 @@ impl AppCore {
        self.command_tx.blocking_send(AppCoreCommand::Quit).unwrap();
     }
 
-    async fn create_client(&mut self) -> Result<client::Client> {
+    async fn create_client(&mut self) -> Result<verishda_dto::Client> {
         if let Some(credentials) = &mut self.credentials {
             if Instant::now().cmp(&credentials.expires_at) == std::cmp::Ordering::Greater{
                 let refresh_token = RefreshToken::new(credentials.refresh_token.clone());
@@ -187,7 +189,7 @@ impl AppCore {
                 .connection_verbose(true)
                 .build()
                 .expect("client creation failed");
-            let client = client::Client::new_with_client(PUBLIC_API_BASE_URL, inner);
+            let client = verishda_dto::Client::new_with_client(PUBLIC_API_BASE_URL, inner);
             Ok(client)
         } else {
             Err(anyhow::anyhow!("Not logged in"))
@@ -259,19 +261,25 @@ impl AppCore {
             debug!("{announcements:?}");
             let announcements = announcements.iter()
                 .enumerate()
-                .map(|(n,a)|
-                    match a {
-                        &Announcement::PresenceAnnounced | &Announcement::WeeklyPresenceAnnounced => {
-                            Some(PresenceAnnouncement{
-                                date: now_date
-                                .checked_add_days(Days::new(n as u64))
-                                .unwrap_or(now_date)
-                                .to_string()
-                            })
-                        },
-                        _ => None
-                    }
-                )
+                .map(|(days_from_now,a)|{
+                    let date = now_date
+                    .checked_add_days(Days::new(days_from_now as u64))
+                    .unwrap_or(now_date);
+
+                    let kind = match a {
+                        Announcement::WeeklyPresenceAnnounced => 
+                            PresenceAnnouncementKind::RecurringAnnouncement,
+                        Announcement::PresenceAnnounced => 
+                            PresenceAnnouncementKind::SingularAnnouncement,
+                        Announcement::NotAnnounced => 
+                            return None
+                    };
+
+                    Some(PresenceAnnouncement{
+                        kind,
+                        date
+                    })
+                })
                 .filter_map(|o|o)
                 .collect();
             
@@ -477,7 +485,7 @@ impl AppCore {
         let (pkce_challenge, pkce_verifier) = PkceCodeChallenge::new_random_sha256();
 
         // Generate the full authorization URL.
-        let (auth_url, csrf_token, nonce) = self.oidc_client.as_ref().unwrap()
+        let (auth_url, _csrf_token, _nonce) = self.oidc_client.as_ref().unwrap()
             .authorize_url(
                 CoreAuthenticationFlow::AuthorizationCode,
                 CsrfToken::new_random,

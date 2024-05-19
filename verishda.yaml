@@ -154,7 +154,7 @@ components:
           type: array
           items:
             type: string
-            format: localdate
+            format: date
     PresenceAnnouncements:
       type: array
       description: >-
@@ -173,9 +173,17 @@ components:
         date:
           description: Date for which the user announces their presence
           type: string
-          format: localdate
+          format: date
+        kind:
+          $ref: '#/components/schemas/PresenceAnnouncementKind'
       required:
       - date
+      - kind
+    PresenceAnnouncementKind:
+      type: string
+      enum:
+      - SingularAnnouncement
+      - RecurringAnnouncement     
   securitySchemes:
     petstore_auth:
       type: oauth2

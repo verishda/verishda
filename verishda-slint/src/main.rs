@@ -2,18 +2,17 @@
 
 use clap::Parser;
 
-use chrono::{Datelike, Days, NaiveDate};
-use client::types::Presence;
-use std::{collections::HashSet, env, sync::Arc, thread};
+use chrono::{Datelike, Days};
+use verishda_dto::types::{Presence, Site};
+use std::{collections::HashSet, env, sync::Arc};
 use tokio::sync::Mutex;
 
-use crate::{client::types::Site, core::Announcement};
+use core::Announcement;
 use slint::{Model, ModelRc, VecModel, Weak};
 use tokio::runtime::Handle;
 
 slint::include_modules!();
 
-mod client;
 mod core;
 mod platform;
 
@@ -33,7 +32,7 @@ fn main() {
     log::info!("Starting up Verishda");
 
     let runtime = tokio::runtime::Runtime::new().unwrap();
-    let g = runtime.enter();
+    let _g = runtime.enter();
 
     // check if we are being called to handle a redirect
     if let Some(url) = &args.redirect_url {
@@ -139,7 +138,6 @@ fn ui_main() {
                             chrono::Local::now().weekday().num_days_from_monday() as i32;
                         app_ui.set_current_day_index(current_day)
                     }
-                    _ => {}
                 }
             })
             .unwrap();
@@ -301,7 +299,6 @@ fn to_person_model(presence: &Presence) -> PersonModel {
     let dates = presence
         .announced_dates
         .iter()
-        .filter_map(|s| NaiveDate::parse_from_str(s, "%Y-%m-%d").ok())
         .collect::<HashSet<_>>();
 
     let now_date = chrono::Utc::now().naive_utc().date();

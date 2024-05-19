@@ -15,6 +15,7 @@ name = "verishda"
 path = "src/bin/shuttle.rs"
 
 [dependencies]
+verishda-dto = {path="../verishda-dto"}
 # date and time
 chrono = "0.4.38"
 # Useful crate to handle errors.

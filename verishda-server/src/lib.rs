@@ -14,7 +14,7 @@ use error::HandlerError;
 use http::{StatusCode, request::Parts};
 use memory_store::MemoryStore;
 
-use site::{PresenceAnnouncement, Site, Presence};
+use verishda_dto::types::{PresenceAnnouncement, Site, Presence};
 use log::{trace, error};
 use sqlx::pool::PoolConnection;
 use sqlx::{Pool, Postgres};

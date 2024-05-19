@@ -1,36 +1,10 @@
 use std::collections::HashMap;
 
 use anyhow::Result;
-use serde::{Serialize, Deserialize};
 use chrono::NaiveDate;
 use sqlx::{Connection, Postgres, PgConnection, postgres::PgRow, Row};
 
-
-#[derive(Serialize)]
-pub(super) struct Site 
-where Self: Send
-{
-    id: String,
-    name: String,
-    longitude: f32,
-    latitude: f32
-}
-
-#[derive(Serialize, Default, Clone)]
-pub(super) struct Presence 
-where Self: Send
-{
-    pub logged_as_name: String,
-    pub is_self: bool,
-    pub currently_present: bool,
-    pub announced_dates: Vec<NaiveDate>,
-}
-
-#[derive(Deserialize)]
-pub(super) struct PresenceAnnouncement {
-    date: NaiveDate,
-}
-
+use verishda_dto::types::{Site, Presence, PresenceAnnouncement};
 
 pub(super) async fn get_sites(pg: &mut PgConnection) -> Result<Vec<Site>> 
 where Result<Vec<Site>>: Send + Sync
@@ -97,8 +71,10 @@ pub(super) async fn get_presence_on_site(pg: &mut PgConnection, user_id: &str, l
         if !m.contains_key(user_id) {
             m.insert(user_id.to_string(), Presence {
                 logged_as_name: r.get(1), 
-                ..Default::default()}
-            );
+                announced_dates: vec![],
+                currently_present: false,
+                is_self : false,
+            });
         }
         let presence = m.get_mut(user_id).unwrap();
 
@@ -118,7 +94,7 @@ pub(super) async fn get_presence_on_site(pg: &mut PgConnection, user_id: &str, l
             currently_present: false,
             logged_as_name: logged_as_name.to_string(),
             announced_dates: Vec::new(),
-            ..Default::default()
+            is_self: false,
         },
     };
     self_presence.is_self = true;
