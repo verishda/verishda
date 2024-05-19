@@ -46,6 +46,6 @@ axum-extra = {version="0.9.3", features=["typed-header"]}
 tokio = {version = "1.33.0", features=["full"] }
 sqlx = {version = "0.7", features=["runtime-tokio","tls-rustls","postgres"]}
 
-shuttle-axum = "0.44.0"
-shuttle-runtime = "0.44.0"
-shuttle-shared-db = {version="0.44.0", features=["postgres","sqlx"]}
+shuttle-axum = "0.45.0"
+shuttle-runtime = "0.45.0"
+shuttle-shared-db = {version="0.45.0", features=["postgres","sqlx"]}
