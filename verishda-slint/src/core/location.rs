@@ -127,7 +127,7 @@ impl LocationHandler {
     async fn poll_location() -> Location {
         let loc = Geolocator::new().unwrap();
         let pos = loc.GetGeopositionAsync().unwrap().await.unwrap();
-        Location::from(
+        let location = Location::from(
             &pos.Coordinate()
                 .unwrap()
                 .Point()
@@ -136,6 +136,7 @@ impl LocationHandler {
                 .unwrap(),
         );
         log::debug!("location: {location:?}");
+        location
     }
 
     #[cfg(unix)]
