@@ -4,7 +4,7 @@ use anyhow::Result;
 use chrono::NaiveDate;
 use sqlx::{Connection, Postgres, PgConnection, postgres::PgRow, Row};
 
-use verishda_dto::types::{Site, Presence, PresenceAnnouncement};
+use verishda_dto::types::{Presence, PresenceAnnouncement, PresenceAnnouncementKind, Site};
 
 pub(super) async fn get_sites(pg: &mut PgConnection) -> Result<Vec<Site>> 
 where Result<Vec<Site>>: Send + Sync
@@ -45,13 +45,13 @@ pub(super) async fn hello_site(pg: &mut PgConnection, user_id: &str, logged_as_n
 pub(super) async fn get_presence_on_site(pg: &mut PgConnection, user_id: &str, logged_as_name: &str, site_id: &str) -> Result<Vec<Presence>> {
 
     let stmt = String::new() +
-    "SELECT u.user_id, u.logged_as_name, to_char(a.present_on, 'YYYY-MM-DD')
+    "SELECT u.user_id, u.logged_as_name, to_char(a.present_on, 'YYYY-MM-DD'), a.recurring
     FROM user_announcements AS a JOIN user_info AS u ON a.user_id=u.user_id 
     WHERE a.site_id=$1
     
     UNION
     
-    SELECT u.user_id, u.logged_as_name, NULL 
+    SELECT u.user_id, u.logged_as_name, NULL, false
     FROM logged_into_site AS s JOIN user_info AS u ON s.user_id=u.user_id 
     WHERE s.site_id=$1 AND u.last_seen >= now() - INTERVAL '10 minutes'";
 
@@ -68,10 +68,11 @@ pub(super) async fn get_presence_on_site(pg: &mut PgConnection, user_id: &str, l
             None
         };
 
+        let recurring = r.get::<bool,usize>(3);
         if !m.contains_key(user_id) {
             m.insert(user_id.to_string(), Presence {
                 logged_as_name: r.get(1), 
-                announced_dates: vec![],
+                announcements: vec![],
                 currently_present: false,
                 is_self : false,
             });
@@ -80,7 +81,14 @@ pub(super) async fn get_presence_on_site(pg: &mut PgConnection, user_id: &str, l
 
         match present_on {
             // having a presence announcement date means exactly that: an announcement 
-            Some(date) => presence.announced_dates.push(date),
+            Some(date) => presence.announcements.push(PresenceAnnouncement { 
+                date,
+                kind: if recurring {
+                    PresenceAnnouncementKind::RecurringAnnouncement
+                } else {
+                    PresenceAnnouncementKind::SingularAnnouncement
+                }
+            }),
             // having none means that user is currently present
             None => presence.currently_present = true,
         }
@@ -93,7 +101,7 @@ pub(super) async fn get_presence_on_site(pg: &mut PgConnection, user_id: &str, l
         None => Presence{
             currently_present: false,
             logged_as_name: logged_as_name.to_string(),
-            announced_dates: Vec::new(),
+            announcements: Vec::new(),
             is_self: false,
         },
     };
@@ -136,11 +144,13 @@ pub(super) async fn announce_presence_on_site(pg: &mut PgConnection, user_id: &s
 
     for a in announcements {
         let sql_date = a.date.format("%Y/%m/%d").to_string();
-        
-        let stmt = format!("INSERT INTO user_announcements (user_id, site_id, present_on) VALUES ($1, $2, '{}')", sql_date);
+        let recurring = a.kind == PresenceAnnouncementKind::RecurringAnnouncement;
+
+        let stmt = format!("INSERT INTO user_announcements (user_id, site_id, present_on, recurring) VALUES ($1, $2, '{}', $3)", sql_date);
         sqlx::query(&stmt)
         .bind(&user_id.to_string())
         .bind(&site_id.to_string())
+        .bind(recurring)
         .execute(&mut *tr)
         .await?;
     }

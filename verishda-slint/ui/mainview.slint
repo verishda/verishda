@@ -67,7 +67,7 @@ component PresenceItem inherits PresenceCell{
                 return;
             }
             // double click switches for recurring announcement
-            announcement = AnnouncementModel.RecurringPresenceAnnounced;
+            person.announcements[day-offset] = AnnouncementModel.RecurringPresenceAnnounced;
             announcement_change_requested(person, day-offset);
         }
         clicked => {

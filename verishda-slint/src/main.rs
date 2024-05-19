@@ -3,8 +3,8 @@
 use clap::Parser;
 
 use chrono::{Datelike, Days};
-use verishda_dto::types::{Presence, Site};
-use std::{collections::HashSet, env, sync::Arc};
+use verishda_dto::types::{Presence, PresenceAnnouncementKind, Site};
+use std::{collections::HashMap, env, sync::Arc};
 use tokio::sync::Mutex;
 
 use core::Announcement;
@@ -263,7 +263,7 @@ fn refresh_requested(app_core: Arc<Mutex<AppCore>>) {
 }
 
 fn announce(app_core: Arc<Mutex<AppCore>>, site_id: String, person: PersonModel) {
-    let person_announcements = person.announcements.clone();
+    let person_announcements = person.announcements.clone().iter().collect::<Vec<_>>();
     log::debug!("Announcement made on site {site_id:?} as {person:?} with announcements {person_announcements:?}");
     let announcements = person
         .announcements
@@ -296,23 +296,46 @@ impl Into<Announcement> for AnnouncementModel {
 const ANNOUNCED_DAYS_AHEAD: u32 = 7;
 
 fn to_person_model(presence: &Presence) -> PersonModel {
-    let dates = presence
-        .announced_dates
-        .iter()
-        .collect::<HashSet<_>>();
+    let now_date = chrono::Local::now().date_naive();
 
-    let now_date = chrono::Utc::now().naive_utc().date();
+    let dates = presence
+        .announcements
+        .iter()
+        .filter_map(|a|{
+            let date;
+            match a.kind {
+                PresenceAnnouncementKind::RecurringAnnouncement => {
+                    let day_offset = a.date.signed_duration_since(now_date).num_days();
+                    if day_offset >= 0 {
+                        date = a.date;
+                    } else {
+                        date = if let Some(adjusted_date) = now_date.checked_add_days(Days::new(((day_offset % 7)+7) as u64)) {
+                            adjusted_date
+                        } else {
+                            return None
+                        }
+                    }
+                }
+                PresenceAnnouncementKind::SingularAnnouncement =>
+                    date = a.date,
+            }
+            Some((date, a.kind))
+        })
+        .collect::<HashMap<_,_>>();
 
     let announcements = (0..ANNOUNCED_DAYS_AHEAD)
         .into_iter()
         .map(|n| {
-            let is_announced = now_date
+            let announcement = now_date
                 .checked_add_days(Days::new(n as u64))
-                .is_some_and(|date| dates.contains(&date));
-            if is_announced {
-                AnnouncementModel::PresenceAnnounced
-            } else {
-                AnnouncementModel::NotAnnounced
+                .and_then(|date| dates.get(&date));
+            match announcement {
+                Some(kind) => match kind {
+                    &PresenceAnnouncementKind::SingularAnnouncement => AnnouncementModel::PresenceAnnounced,
+                    &PresenceAnnouncementKind::RecurringAnnouncement => AnnouncementModel::RecurringPresenceAnnounced,
+                },
+                None =>           
+                    AnnouncementModel::NotAnnounced
             }
         })
         .collect::<Vec<_>>();

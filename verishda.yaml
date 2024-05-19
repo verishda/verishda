@@ -150,11 +150,10 @@ components:
           description: >-
             Declares whether the named user is currently present. A
             user may not be present, but still have presence announcements.
-        announced_dates:
+        announcements:
           type: array
           items:
-            type: string
-            format: date
+            $ref: '#/components/schemas/PresenceAnnouncement'
     PresenceAnnouncements:
       type: array
       description: >-
