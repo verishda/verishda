@@ -1,16 +1,17 @@
-use std::{path::PathBuf, sync::Arc, time::{Duration, Instant}};
+use std::{borrow::BorrowMut, collections::HashMap, path::PathBuf, sync::Arc, time::{Duration, Instant}};
 
+use axum::{extract::Query, http::StatusCode, routing::get, Router};
 use chrono::Days;
 use futures::prelude::*;
 use openidconnect::{core::{CoreAuthenticationFlow, CoreClient, CoreProviderMetadata}, reqwest::async_http_client, AuthorizationCode, ClientId, CsrfToken, IssuerUrl, Nonce, OAuth2TokenResponse, PkceCodeChallenge, PkceCodeVerifier, RedirectUrl, RefreshToken};
-use anyhow::Result;
+use anyhow::{Result};
 
 use reqwest::header::HeaderMap;
 #[cfg(windows)]
 use tokio::net::windows::named_pipe::{ClientOptions, ServerOptions};
 #[cfg(unix)]
 use tokio::net::{UnixListener, UnixStream};
-use tokio::sync::Mutex;
+use tokio::{net::TcpListener, sync::{Mutex, Notify}};
 use tokio_util::codec::{FramedWrite, FramedRead, LengthDelimitedCodec};
 use tokio_serde::{formats::SymmetricalJson, SymmetricallyFramed};
 use url::Url;
@@ -39,6 +40,37 @@ struct Credentials {
     expires_at: Instant,
 }
 
+/**
+ * Determines how after a successful login the access code is transferred
+ * from the browser into the application.
+ */
+#[derive(Clone)]
+enum AccessCodeTransferKind {
+    /** 
+     * The redirect URI uses a custom URI scheme to spawn a new instance
+     * of the application, which then uses an IPC mechanism (typically 
+     * named pipes) to send the code to the original process.
+     */
+    InterProcess,
+    /**
+     * The redirect URI points to http:://localhost to a specific port,
+     * on which the application runs a server receives the code directly.
+     */
+    HttpServer(Arc<Notify>),
+}
+
+
+impl Default for AccessCodeTransferKind {
+    fn default() -> Self {
+        #[cfg(windows)]
+//        {Self::HttpServer(Arc::new(Notify::new()))}
+        {Self::InterProcess}
+        #[cfg(unix)]
+        {Self::HttpServer(Arc::new(Notify::new()))}
+    }
+
+}
+
 pub struct AppCore {
     location_handler: Arc<Mutex<location::LocationHandler>>,
     oidc_metadata: Option<CoreProviderMetadata>,
@@ -47,9 +79,14 @@ pub struct AppCore {
     command_tx: tokio::sync::mpsc::Sender<AppCoreCommand>,
     on_core_event: Option<Box<dyn Fn(CoreEvent) + Send>>,
     site: Option<String>,
+    access_code_transfer_kind: AccessCodeTransferKind,
 }
 
+#[derive(Debug)]
 pub enum CoreEvent {
+    LoggingIn,
+    LogginSuccessful,
+    LoggedOut,
     SitesUpdated(Vec<verishda_dto::types::Site>),
     PresencesChanged(Vec<verishda_dto::types::Presence>),
 }
@@ -85,6 +122,7 @@ impl AppCore {
             credentials: None,
             on_core_event: None,
             site: None,
+            access_code_transfer_kind: AccessCodeTransferKind::default()
         };
 
         let app_core = Arc::new(Mutex::new(app_core));
@@ -325,8 +363,90 @@ impl AppCore {
         }
     }
 
-    pub fn start_login<F>(app_core: Arc<Mutex<AppCore>>, finished_callback: F) -> Result<Url> 
-    where F: FnOnce(bool) + Send + 'static
+    pub fn start_login(app_core: Arc<Mutex<AppCore>>) -> Result<Url> 
+    {
+        let kind = app_core.blocking_lock().access_code_transfer_kind.clone();
+        match kind {
+            AccessCodeTransferKind::InterProcess => Self::start_login_ipc(app_core.clone()),
+            AccessCodeTransferKind::HttpServer(shutdown_notify) => Self::start_login_http(app_core.clone(), shutdown_notify.clone()),
+        }
+    }
+
+    fn start_login_http(app_core: Arc<Mutex<AppCore>>, shutdown_notify: Arc<Notify>) -> Result<Url>
+    {
+        let (auth_url, pkce_verifier) = app_core.blocking_lock().authorization_url();
+
+        let pkce_verifier = Arc::new(Mutex::new(Option::Some(pkce_verifier)));
+
+        tokio::spawn(async move {
+            let mut tcp_listener = None;
+            let port_range = 60000..62000;
+            for port in port_range {
+                use std::io::Result;
+                let bind_addr = format!("localhost:{port}");
+                match TcpListener::bind(&bind_addr).await {
+                    
+                    Result::Ok(l) => {
+                        info!("successfully bound socket for HTTP server to receive access code at {}", bind_addr);
+                        tcp_listener = Some(l);
+                        break;
+                    },
+                    Result::Err(e) => {
+                        match e.kind() {
+                            std::io::ErrorKind::AddrInUse => continue,
+                            _ => {
+                                log::error!("cannot bind address for local HTTP server to receive access code, giving up (error: {e})");
+                                app_core.blocking_lock().broadcast_core_event(CoreEvent::LoggedOut);
+                                return
+                            }
+                        }
+                    }
+                }
+            }
+
+            let tcp_listener = tcp_listener.unwrap();
+
+            let router = Router::new()
+            .route("/redirect", get(|Query(query): Query<HashMap<String,String>>| async move{
+                let result = Self::handle_redirect(app_core.clone(), query, pkce_verifier.clone()).await;
+                result
+            }))
+            ;
+
+            axum::serve(tcp_listener, router)
+            .with_graceful_shutdown(async move {shutdown_notify.notified().await})
+            .await;
+            
+        });
+
+        Ok(auth_url)
+    }
+
+    async fn handle_redirect(app_core: Arc<Mutex<AppCore>>, query: HashMap<String,String>, pkce_verifier: Arc<Mutex<Option<PkceCodeVerifier>>>) -> Result<(), StatusCode> {
+        let code = match query.get("code") {
+            Some(code) => code,
+            None => {
+                log::error!("code not provided in query param");
+                return Err(StatusCode::BAD_REQUEST)
+            }
+        };
+
+        let pkce_verifier = match pkce_verifier.lock().await.borrow_mut().take() {
+            Some(v) => v,
+            None => return Err(StatusCode::GONE)
+        };
+        
+        match Self::exchange_code_for_tokens(app_core.clone(), code.to_string(), pkce_verifier).await {
+            Result::Ok(_) => Result::Ok(()),
+            Err(e) => {
+                error!("token exchange failed: {e}");
+                Err(StatusCode::INTERNAL_SERVER_ERROR)
+            }
+        }
+
+    }
+
+    fn start_login_ipc(app_core: Arc<Mutex<AppCore>>) -> Result<Url>
     {
         let (auth_url, pkce_verifier) = app_core.blocking_lock().authorization_url();
 
@@ -353,7 +473,7 @@ impl AppCore {
             {
                 if let Err(e) = pipe_server.connect().await {
                     log::error!("could not connect to named pipe: {e}");
-                    finished_callback(false);
+                    app_core.blocking_lock().broadcast_core_event(CoreEvent::LoggedOut);
                     return;
                 } else {
                     pipe = pipe_server;
@@ -364,7 +484,7 @@ impl AppCore {
                 pipe = match pipe_server.accept().await {
                     Err(e) => {
                         log::error!("failed to connect to unix socket");
-                        finished_callback(false);
+                        app_core.blocking_lock().broadcast_core_event(CoreEvent::LoggedOut);
                         return;
                     }
                     Ok((pipe,_)) => {
@@ -375,29 +495,64 @@ impl AppCore {
 
             let r = Self::read_login_pipe_message(pipe).await;
 
-            let r = match r{
-                Ok(Some(msg)) => Self::evaluate_login_message(app_core.clone(), msg, pkce_verifier).await,
-                Ok(None) => Ok(false),
-                Err(e) => Err(e),
-            };
-
-            let logged_in = match r {
-                Err(e) => {
-                    log::error!("Error reading login pipe message: {}", e);
-                    false
-                },
-                Ok(logged_in) => logged_in,
-            };
-
-            finished_callback(logged_in);
+            Self::evaluate_login_message(app_core.clone(), r, pkce_verifier).await;
         });
         Ok(auth_url)
     }
 
+    async fn evaluate_login_message(app_core: Arc<Mutex<AppCore>>, msg: Result<Option<LoginPipeMessage>>, pkce_verifier: PkceCodeVerifier) -> Result<()>
+    {
+        let msg = match msg{
+            Result::Ok(Some(msg)) => msg,
+            Result::Ok(None) => {
+                app_core.lock().await.broadcast_core_event(CoreEvent::LoggedOut);
+                return Ok(())
+            }
+            Err(e) => return Err(e),
+        };
+
+        let r : anyhow::Result<_> = match msg {
+            LoginPipeMessage::Cancel => {
+                Ok(false)
+            }
+            LoginPipeMessage::HandleRedirect{code} => {
+                log::info!("Received authorization code: {}", code);
+                let _credentials = Self::exchange_code_for_tokens(app_core.clone(), code, pkce_verifier).await?;
+                Ok(true)
+            }
+        };
+
+        let logged_in = match r {
+            Err(e) => {
+                log::error!("Error reading login pipe message: {}", e);
+                false
+            },
+            Result::Ok(logged_in) => logged_in,
+        };
+
+        app_core.lock().await.broadcast_core_event(
+            if logged_in {
+                CoreEvent::LogginSuccessful
+            } else {
+                CoreEvent::LoggedOut
+            }
+        );
+
+        Ok(())
+
+    }
+
     pub fn cancel_login(&mut self) {
-        tokio::spawn(async move {
-            Self::write_pipe_message(LoginPipeMessage::Cancel).await.unwrap();
-        });
+        match &self.access_code_transfer_kind {
+            AccessCodeTransferKind::InterProcess => {
+                tokio::spawn(async move {
+                    Self::write_pipe_message(LoginPipeMessage::Cancel).await.unwrap();
+                });
+            },
+            AccessCodeTransferKind::HttpServer(shutdown_notify) => {
+                shutdown_notify.notify_waiters();
+            }
+        };
     }
 
     async fn write_pipe_message(message: LoginPipeMessage) -> Result<()> {
@@ -431,22 +586,6 @@ impl AppCore {
         }
     }
 
-    async fn evaluate_login_message(app_core: Arc<Mutex<AppCore>>, msg: LoginPipeMessage, pkce_verifier: PkceCodeVerifier) -> anyhow::Result<bool> {
-        match msg {
-            LoginPipeMessage::Cancel => {
-                return Ok(false);
-            }
-            LoginPipeMessage::HandleRedirect{code} => {
-                log::info!("Received authorization code: {}", code);
-                let credentials = Self::exchange_code_for_tokens(app_core.clone(), code, pkce_verifier).await?;
-                log::info!("Exchanged into access_token {credentials:?}");
-                app_core.lock().await.credentials = Some(credentials);
-                app_core.lock().await.refresh_sites().await;
-                return Ok(true);
-            }
-        }
-    }
-
     fn expires_at_from_now(expires_in: Option<Duration>) -> Instant {
         let expires_in = expires_in
         .unwrap_or(Duration::from_secs(60));
@@ -457,8 +596,8 @@ impl AppCore {
         Instant::now() + expires_in
     }
 
-    async fn exchange_code_for_tokens(app_core: Arc<Mutex<AppCore>>, code: String, pkce_verifier: PkceCodeVerifier) -> Result<Credentials> {
-        let app_core = app_core.lock().await;
+    async fn exchange_code_for_tokens(app_core: Arc<Mutex<AppCore>>, code: String, pkce_verifier: PkceCodeVerifier) -> Result<()> {
+        let mut app_core = app_core.lock().await;
         let client = app_core.oidc_client.as_ref().unwrap();
         let token_response = client.exchange_code(AuthorizationCode::new(code))
             .set_pkce_verifier(pkce_verifier)
@@ -471,7 +610,12 @@ impl AppCore {
             refresh_token,
             expires_at: Self::expires_at_from_now(token_response.expires_in()),
         };
-        Ok(credentials)
+
+        log::info!("Exchanged into access_token {credentials:?}");
+        app_core.credentials = Some(credentials);
+        app_core.refresh_sites().await;
+
+        Ok(())
     }
 
     pub async fn handle_login_redirect(url: &str) -> Result<()> {

@@ -26,6 +26,7 @@ clap = { version = "4.5.3", features = ["derive"] }
 webbrowser = "1.0.0"
 
 verishda-dto = {path="../verishda-dto"}
+axum = "0.7.5"
 
 [build-dependencies]
 slint-build = "1.5"

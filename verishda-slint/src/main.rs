@@ -46,12 +46,6 @@ fn main() {
             }
         });
     } else {
-        /*runtime.block_on(async {
-            tokio::task::spawn_blocking(ui_main)
-            .await
-            .unwrap();
-        });
-        */
         ui_main();
     }
 }
@@ -105,11 +99,18 @@ fn ui_main() {
 
     let main_window_weak = main_window.as_weak();
     app_core.blocking_lock().on_core_event(move |event| {
+        log::debug!("core event received: {event:?}");
         main_window_weak
             .upgrade_in_event_loop(|main_window| {
                 let app_ui = main_window.global::<AppUI>();
 
                 match event {
+                    core::CoreEvent::LoggingIn => 
+                        app_ui.set_state(MainWindowState::ShowingWaitingForLoginView),
+                    core::CoreEvent::LogginSuccessful => 
+                        app_ui.set_state(MainWindowState::ShowingSitePresenceView),
+                    core::CoreEvent::LoggedOut => 
+                        app_ui.set_state(MainWindowState::ShowingWelcomeView),
                     core::CoreEvent::SitesUpdated(sites) => {
                         let sites_model = app_ui.get_sites();
                         let sites_model = sites_model
@@ -219,19 +220,7 @@ fn start_login(app_core: Arc<Mutex<AppCore>>, main_window_weak: Weak<MainWindow>
         .global::<AppUI>()
         .set_state(MainWindowState::ShowingWaitingForLoginView);
 
-    let mw = main_window_weak.clone();
-    let auth_url = if let Ok(auth_url) = AppCore::start_login(app_core.clone(), move |logged_in| {
-        mw.upgrade_in_event_loop(move |main_window: MainWindow| {
-            log::info!("Logged in: {logged_in}");
-            let app_ui = main_window.global::<AppUI>();
-            if logged_in {
-                app_ui.set_state(MainWindowState::ShowingSitePresenceView);
-            } else {
-                app_ui.set_state(MainWindowState::ShowingWelcomeView);
-            }
-        })
-        .expect("cannot upgrade main window weak reference to strong reference in event loop");
-    }) {
+    let auth_url = if let Ok(auth_url) = AppCore::start_login(app_core.clone()) {
         auth_url
     } else {
         eprintln!("Failed to start login");
