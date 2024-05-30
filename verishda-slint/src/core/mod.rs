@@ -373,7 +373,13 @@ impl AppCore {
                 };
             };
 
-            let r = Self::read_login_pipe_message(app_core, pkce_verifier, pipe).await;
+            let r = Self::read_login_pipe_message(pipe).await;
+
+            let r = match r{
+                Ok(Some(msg)) => Self::evaluate_login_message(app_core.clone(), msg, pkce_verifier).await,
+                Ok(None) => Ok(false),
+                Err(e) => Err(e),
+            };
 
             let logged_in = match r {
                 Err(e) => {
@@ -414,25 +420,29 @@ impl AppCore {
         Ok(())
     }
 
-    async fn read_login_pipe_message(app_core: Arc<Mutex<AppCore>>, pkce_verifier: PkceCodeVerifier, pipe_server: impl tokio::io::AsyncRead) -> Result<bool> {
+    async fn read_login_pipe_message(pipe_server: impl tokio::io::AsyncRead) -> Result<Option<LoginPipeMessage>> {
         let frame = FramedRead::new(pipe_server, LengthDelimitedCodec::new());
         let reader = tokio_serde::SymmetricallyFramed::new(frame, SymmetricalJson::<LoginPipeMessage>::default());
         tokio::pin!(reader);
         loop {
             if let Some(msg) = reader.try_next().await? {
-                match msg {
-                    LoginPipeMessage::Cancel => {
-                        return Ok(false);
-                    }
-                    LoginPipeMessage::HandleRedirect{code} => {
-                        log::info!("Received authorization code: {}", code);
-                        let credentials = Self::exchange_code_for_tokens(app_core.clone(), code, pkce_verifier).await?;
-                        log::info!("Exchanged into access_token {credentials:?}");
-                        app_core.lock().await.credentials = Some(credentials);
-                        app_core.lock().await.refresh_sites().await;
-                        return Ok(true);
-                    }
-                }
+                return Ok(Some(msg))
+            }
+        }
+    }
+
+    async fn evaluate_login_message(app_core: Arc<Mutex<AppCore>>, msg: LoginPipeMessage, pkce_verifier: PkceCodeVerifier) -> anyhow::Result<bool> {
+        match msg {
+            LoginPipeMessage::Cancel => {
+                return Ok(false);
+            }
+            LoginPipeMessage::HandleRedirect{code} => {
+                log::info!("Received authorization code: {}", code);
+                let credentials = Self::exchange_code_for_tokens(app_core.clone(), code, pkce_verifier).await?;
+                log::info!("Exchanged into access_token {credentials:?}");
+                app_core.lock().await.credentials = Some(credentials);
+                app_core.lock().await.refresh_sites().await;
+                return Ok(true);
             }
         }
     }
