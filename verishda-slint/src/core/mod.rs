@@ -4,7 +4,7 @@ use axum::{extract::Query, http::StatusCode, routing::get, Router};
 use chrono::Days;
 use futures::prelude::*;
 use openidconnect::{core::{CoreAuthenticationFlow, CoreClient, CoreProviderMetadata}, reqwest::async_http_client, AuthorizationCode, ClientId, CsrfToken, IssuerUrl, Nonce, OAuth2TokenResponse, PkceCodeChallenge, PkceCodeVerifier, RedirectUrl, RefreshToken};
-use anyhow::{Result};
+use anyhow::Result;
 
 use reqwest::header::HeaderMap;
 #[cfg(windows)]
@@ -57,6 +57,7 @@ enum AccessCodeTransferKind {
      * on which the application runs a server receives the code directly.
      */
     HttpServer(Arc<Notify>),
+    WebSocket(Arc<Notify>),
 }
 
 
@@ -64,7 +65,8 @@ impl Default for AccessCodeTransferKind {
     fn default() -> Self {
         #[cfg(windows)]
 //        {Self::HttpServer(Arc::new(Notify::new()))}
-        {Self::InterProcess}
+//        {Self::InterProcess}
+            {Self::WebSocket(Arc::new(Notify::new()))}
         #[cfg(unix)]
         {Self::HttpServer(Arc::new(Notify::new()))}
     }
@@ -340,7 +342,10 @@ impl AppCore {
     }
 
     fn redirect_url(&self) -> String {
-        Self::uri_scheme().to_owned() + "://exchange-token"
+        match self.access_code_transfer_kind {
+            AccessCodeTransferKind::WebSocket(_) => PUBLIC_API_BASE_URL.to_owned() + "/api/public/oidc/login-target",
+            _ => Self::uri_scheme().to_owned() + "://exchange-token"
+        }
     }
 
     fn setings_path() -> PathBuf {
@@ -369,12 +374,13 @@ impl AppCore {
         match kind {
             AccessCodeTransferKind::InterProcess => Self::start_login_ipc(app_core.clone()),
             AccessCodeTransferKind::HttpServer(shutdown_notify) => Self::start_login_http(app_core.clone(), shutdown_notify.clone()),
+            AccessCodeTransferKind::WebSocket(shutdown_notify) => Self::start_login_websocket(app_core.clone(), shutdown_notify.clone()),
         }
     }
 
     fn start_login_http(app_core: Arc<Mutex<AppCore>>, shutdown_notify: Arc<Notify>) -> Result<Url>
     {
-        let (auth_url, pkce_verifier) = app_core.blocking_lock().authorization_url();
+        let (auth_url, pkce_verifier, _) = app_core.blocking_lock().authorization_url();
 
         let pkce_verifier = Arc::new(Mutex::new(Option::Some(pkce_verifier)));
 
@@ -415,7 +421,8 @@ impl AppCore {
 
             axum::serve(tcp_listener, router)
             .with_graceful_shutdown(async move {shutdown_notify.notified().await})
-            .await;
+            .await
+            .unwrap();
             
         });
 
@@ -448,7 +455,7 @@ impl AppCore {
 
     fn start_login_ipc(app_core: Arc<Mutex<AppCore>>) -> Result<Url>
     {
-        let (auth_url, pkce_verifier) = app_core.blocking_lock().authorization_url();
+        let (auth_url, pkce_verifier, _) = app_core.blocking_lock().authorization_url();
 
         // start named pipe server
         let pipe_server;
@@ -542,6 +549,56 @@ impl AppCore {
 
     }
 
+    fn start_login_websocket(app_core: Arc<Mutex<AppCore>>, shutdown_notify: Arc<Notify>) -> Result<Url> {
+        let app_core_clone = app_core.clone();
+        let (auth_url, pkce_verifier, csrf_token) = {
+            app_core.clone().blocking_lock().authorization_url()
+        };
+        let app_core = app_core.clone();
+
+        let ws_url = PUBLIC_API_BASE_URL.to_owned() + "/api/public/oidc/login-requests/" + csrf_token.secret();
+        let mut ws_url = Url::parse(&ws_url).unwrap();
+        match ws_url.scheme() {
+            "http" => ws_url.set_scheme("ws").unwrap(),
+            "https" => ws_url.set_scheme("wss").unwrap(),
+            _ => panic!("unsupported scheme")
+        };
+        tokio::spawn( async move {
+            let (mut ws_stream, _) = match tokio_tungstenite::connect_async(&ws_url).await {
+                Ok(s) => s,
+                Err(e) => {
+                    log::error!("failed to connect to code receving websocket service on url {ws_url} with error '{e}'");
+                    return
+                }
+            };
+
+            tokio::select! {
+                _ = shutdown_notify.notified() => {
+                    return;
+                }
+                ws_result = ws_stream.next() => match ws_result {
+                    Some(Ok(tokio_tungstenite::tungstenite::Message::Text(code))) => {
+                        if let Ok(()) = Self::exchange_code_for_tokens(app_core, code, pkce_verifier).await {
+                            app_core_clone.lock().await.broadcast_core_event(CoreEvent::LogginSuccessful);
+                            return;
+                        }
+                    }
+                    Some(Ok(msg)) => {
+                        log::error!("wrong message type received: {msg}");
+                    }
+                    Some(Err(e)) => {
+                        log::error!("error while reading from websocket: {e}");
+                    }
+                    None => {
+                        log::error!("stream terminated without providing code");
+                    }
+                }
+            }
+            app_core_clone.lock().await.broadcast_core_event(CoreEvent::LoggedOut);
+        });
+        Ok(auth_url)
+    }
+
     pub fn cancel_login(&mut self) {
         match &self.access_code_transfer_kind {
             AccessCodeTransferKind::InterProcess => {
@@ -551,7 +608,10 @@ impl AppCore {
             },
             AccessCodeTransferKind::HttpServer(shutdown_notify) => {
                 shutdown_notify.notify_waiters();
-            }
+            },
+            AccessCodeTransferKind::WebSocket(shutdown_notify) => {
+                shutdown_notify.notify_waiters();
+            },
         };
     }
 
@@ -634,12 +694,12 @@ impl AppCore {
         Ok(())
     }
 
-    fn authorization_url(&self) -> (Url, PkceCodeVerifier) {
+    fn authorization_url(&self) -> (Url, PkceCodeVerifier, CsrfToken) {
         // Generate a PKCE challenge.
         let (pkce_challenge, pkce_verifier) = PkceCodeChallenge::new_random_sha256();
 
         // Generate the full authorization URL.
-        let (auth_url, _csrf_token, _nonce) = self.oidc_client.as_ref().unwrap()
+        let (auth_url, csrf_token, _nonce) = self.oidc_client.as_ref().unwrap()
             .authorize_url(
                 CoreAuthenticationFlow::AuthorizationCode,
                 CsrfToken::new_random,
@@ -649,7 +709,7 @@ impl AppCore {
             .set_pkce_challenge(pkce_challenge)
             .url();
 
-        (auth_url, pkce_verifier)
+        (auth_url, pkce_verifier, csrf_token)
     }
 
     pub async fn init(&mut self) -> Result<()>{

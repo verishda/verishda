@@ -1,19 +1,24 @@
 use std::cell::OnceCell;
 use std::ops::{Deref, DerefMut};
+use std::sync::Arc;
 
 use anyhow::{anyhow, Result};
 use axum::body::Body;
 use axum::debug_handler;
-use axum::extract::{OriginalUri, Host, FromRef, State};
+use axum::extract::{ws, FromRef, Host, OriginalUri, Query, State};
 use axum::{Router, routing::{get, post, put}, response::{Response, IntoResponse, Redirect, Html}, Json, extract::{Path, FromRequestParts}, async_trait, RequestPartsExt, Extension};
+use axum::extract::ws::{WebSocket, WebSocketUpgrade};
 use axum_extra::{TypedHeader, headers::{Authorization, authorization::Bearer}};
 use axum_extra::typed_header::TypedHeaderRejectionReason;
 use bytes::Bytes;
 use config::Config;
+use dashmap::DashMap;
 use error::HandlerError;
 use http::{StatusCode, request::Parts};
 use memory_store::MemoryStore;
 
+use serde::{Deserialize, Serialize};
+use tokio::sync::oneshot;
 use verishda_dto::types::{PresenceAnnouncement, Site, Presence};
 use log::{trace, error};
 use sqlx::pool::PoolConnection;
@@ -48,12 +53,14 @@ where Self: Send + Sync + Clone
 {
     pool: Pool<Postgres>,
     config: Box<dyn Config>,
+    pending_logins: Arc<DashMap<String,oneshot::Sender<String>>>,
 }
 impl Clone for VerishdaState {
     fn clone(&self) -> Self {
         Self {
             pool: self.pool.clone(),
             config: self.config.clone_box_dyn(),
+            pending_logins: self.pending_logins.clone(),
         }
     }
 }
@@ -118,10 +125,13 @@ where
 
 pub fn build_router(pool: Pool<Postgres>, config: impl config::Config) -> Router
 {
-    let state = VerishdaState { pool, config: config.clone_box_dyn()  };
+    let pending_logins = Arc::new(DashMap::with_capacity(127));
+    let state = VerishdaState { pool, config: config.clone_box_dyn(), pending_logins };
     return Router::new()
     .route(SWAGGER_SPEC_URL, get(handle_get_swagger_spec))
     .route("/api/public/swagger-ui/:path", get(handle_get_swagger_ui))
+    .route("/api/public/oidc/login-requests/:login_id", get(handle_get_login_request))
+    .route("/api/public/oidc/login-target", get(handle_get_login_target))
     .route("/api/sites", get(handle_get_sites))
     .route("/api/sites/:siteId/presence", get(handle_get_sites_siteid_presence))
     .route("/api/sites/:siteId/hello", post(handle_post_sites_siteid_hello))
@@ -172,6 +182,62 @@ async fn handle_get_swagger_ui(Path(path): Path<String>) -> Result<Response<Body
     };
 
     Ok(resp)
+}
+
+#[derive(Serialize,Deserialize)]
+struct CodeAndStateParams {
+    code: String,
+    state: String,
+}
+
+
+
+
+#[debug_handler]
+async fn handle_get_login_request(State(state): State<VerishdaState>, Path(login_id): Path<String>, ws: WebSocketUpgrade) -> impl IntoResponse {
+
+    let (tx, rx) = oneshot::channel::<String>();
+
+    let prev = state.pending_logins.insert(login_id, tx);
+    if let Some(_) = prev {
+        return Err(Response::builder().status(409).body("login request already exists, terminating both".to_string()).unwrap());
+    };
+
+    Ok(ws.on_upgrade(|socket|handle_login_request_ws(socket, rx)))
+}
+
+async fn handle_login_request_ws(mut socket: WebSocket, pending_login: oneshot::Receiver<String>) {
+    let code = match pending_login.await {
+        Ok(code) => code,
+        Err(e) => {
+            // we simply return on Err, there does not seem to be a way to distinguish between
+            // a closed oneshot and other errors
+            log::debug!("oneshot ended without receiving code: {e}");
+            return;
+        }
+    };
+
+    // we ignore the result, as there is no distinction between a closed websocket (fine, and )    
+    if let Err(e) = socket.send(ws::Message::from(code)).await {
+        log::debug!("failed to send code to web socket: {e}")
+    }
+}
+
+#[debug_handler]
+async fn handle_get_login_target(State(state): State<VerishdaState>, Query(code_state): Query<CodeAndStateParams>) -> Result<(), Response<String>> {
+    match state.pending_logins.remove(&code_state.state) {
+        Some((_,tx)) => {
+            let code = code_state.code.clone();
+            if let Err(e) = tx.send(code) {
+                return Err(Response::builder().status(404).body("login terminated before code could be sent".to_string()).unwrap())
+            }
+            Ok(())
+        },
+        None => {
+            Err(Response::builder().status(404).body("no pending login with this id".to_string()).unwrap())
+        }
+
+    }
 }
 
 #[debug_handler]

@@ -40,7 +40,7 @@ openidconnect = {version="3.5.0"}
 # IMPORTANT: There are build issues on Windows, see https://crates.io/crates/jwt-simple/0.12.9 "Working around compilation issues with the boring crate"
 jwt-simple = {version="0.12.9", default-features=false, features=["pure-rust"]}
 
-axum = {version="0.7.5", features=["macros", "original-uri"]}
+axum = { version = "0.7.5", features = ["macros", "original-uri", "ws"] }
 axum-extra = {version="0.9.3", features=["typed-header"]}
 
 tokio = {version = "1.33.0", features=["full"] }
@@ -49,3 +49,4 @@ sqlx = {version = "0.7", features=["runtime-tokio","tls-rustls","postgres"]}
 shuttle-axum = "0.45.0"
 shuttle-runtime = "0.45.0"
 shuttle-shared-db = {version="0.45.0", features=["postgres","sqlx"]}
+dashmap = "5.5.3"
