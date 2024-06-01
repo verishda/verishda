@@ -1,4 +1,4 @@
-use embed_manifest::{embed_manifest, manifest::ManifestBuilder, new_manifest};
+use embed_manifest::{embed_manifest, new_manifest};
 
 fn main() {
     // slint build

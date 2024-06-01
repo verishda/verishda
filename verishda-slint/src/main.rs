@@ -14,7 +14,6 @@ use tokio::runtime::Handle;
 slint::include_modules!();
 
 mod core;
-mod platform;
 
 use core::AppCore;
 
@@ -34,25 +33,10 @@ fn main() {
     let runtime = tokio::runtime::Runtime::new().unwrap();
     let _g = runtime.enter();
 
-    // check if we are being called to handle a redirect
-    if let Some(url) = &args.redirect_url {
-        runtime.block_on(async {
-            match AppCore::handle_login_redirect(url).await {
-                Ok(()) => std::process::exit(0),
-                Err(e) => {
-                    eprintln!("Failed to handle login redirect: {}", e);
-                    std::process::exit(2);
-                }
-            }
-        });
-    } else {
-        ui_main();
-    }
+    ui_main();
 }
 
 fn ui_main() {
-    platform::startup(AppCore::uri_scheme(), AppCore::redirect_url_param());
-
     let app_core = AppCore::new();
 
     let main_window = MainWindow::new().unwrap();
@@ -214,21 +198,10 @@ fn start_fetch_provider_metadata(main_window: Weak<MainWindow>, app_core: Arc<Mu
     });
 }
 
-fn start_login(app_core: Arc<Mutex<AppCore>>, main_window_weak: Weak<MainWindow>) {
-    main_window_weak
-        .unwrap()
-        .global::<AppUI>()
-        .set_state(MainWindowState::ShowingWaitingForLoginView);
-
-    let auth_url = if let Ok(auth_url) = AppCore::start_login(app_core.clone()) {
-        auth_url
-    } else {
-        eprintln!("Failed to start login");
-        return;
+fn start_login(app_core: Arc<Mutex<AppCore>>, _main_window_weak: Weak<MainWindow>) {
+    if let Err(e) = AppCore::start_login(app_core.clone()) {
+        log::error!("Failed to start login: {e}");
     };
-    if let Err(e) = platform::open_url(&auth_url.to_string()) {
-        eprintln!("Failed to open URL: {}", e);
-    }
 }
 
 fn cancel_login(app_core: Arc<Mutex<AppCore>>, main_window: Weak<MainWindow>) {
