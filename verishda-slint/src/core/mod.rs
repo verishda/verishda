@@ -68,8 +68,9 @@ impl Default for AccessCodeTransferKind {
 //        {Self::InterProcess}
             {Self::WebSocket(Arc::new(Notify::new()))}
         #[cfg(unix)]
-        {Self::HttpServer(Arc::new(Notify::new()))}
-    }
+//        {Self::HttpServer(Arc::new(Notify::new()))}
+        {Self::WebSocket(Arc::new(Notify::new()))}
+}
 
 }
 
