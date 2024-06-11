@@ -307,7 +307,7 @@ fn to_person_model(presence: &Presence) -> PersonModel {
     PersonModel {
         name: presence.logged_as_name.clone().into(),
         is_present: presence.currently_present,
-        // TODO! implement this
+        is_favorite: false, // TODO! implement this
         announcements: ModelRc::new(VecModel::from(announcements)),
         is_self: presence.is_self,
     }

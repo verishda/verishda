@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!-- Created with Inkscape (http://www.inkscape.org/) -->
+
+<svg
+   width="48"
+   height="48"
+   viewBox="0 0 12.7 12.7"
+   version="1.1"
+   id="svg1"
+   sodipodi:docname="search.svg"
+   inkscape:version="1.3.2 (091e20e, 2023-11-25, custom)"
+   inkscape:export-filename="search.png"
+   inkscape:export-xdpi="96"
+   inkscape:export-ydpi="96"
+   xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
+   xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd"
+   xmlns="http://www.w3.org/2000/svg"
+   xmlns:svg="http://www.w3.org/2000/svg">
+  <sodipodi:namedview
+     id="namedview1"
+     pagecolor="#505050"
+     bordercolor="#eeeeee"
+     borderopacity="1"
+     inkscape:showpageshadow="0"
+     inkscape:pageopacity="0"
+     inkscape:pagecheckerboard="0"
+     inkscape:deskcolor="#505050"
+     inkscape:document-units="mm"
+     inkscape:zoom="17.900039"
+     inkscape:cx="22.178723"
+     inkscape:cy="19.441298"
+     inkscape:window-width="1920"
+     inkscape:window-height="1010"
+     inkscape:window-x="2249"
+     inkscape:window-y="-6"
+     inkscape:window-maximized="1"
+     inkscape:current-layer="layer1" />
+  <defs
+     id="defs1" />
+  <g
+     inkscape:label="Ebene 1"
+     inkscape:groupmode="layer"
+     id="layer1">
+    <path
+       id="path4"
+       style="fill:none;fill-rule:evenodd;stroke:#f1f1f1;stroke-width:2.11666667;stroke-dasharray:none;stroke-opacity:1"
+       d="M 4.7149577,1.2118123 C 2.8129102,1.2119738 1.2711164,2.753999 1.2712402,4.6560465 1.2711163,6.5580941 2.8129101,8.1001193 4.7149577,8.1002808 6.6172071,8.1004046 8.1593158,6.5582959 8.1591919,4.6560465 8.1593157,2.7537972 6.617207,1.2116885 4.7149577,1.2118123 Z M 7.0951742,7.47913 11.208933,11.592889 Z"
+       sodipodi:nodetypes="cccccccc" />
+    <path
+       id="path2"
+       style="fill:none;stroke-width:1.05833333;stroke-dasharray:none;stroke:#000000;stroke-opacity:1;fill-rule:evenodd"
+       d="M 4.7149577 1.2118123 A 3.44401 3.44401 0 0 0 1.2712402 4.6560465 A 3.44401 3.44401 0 0 0 4.7149577 8.1002808 A 3.44401 3.44401 0 0 0 8.1591919 4.6560465 A 3.44401 3.44401 0 0 0 4.7149577 1.2118123 z M 7.0951742 7.47913 L 11.041703 11.425659 L 7.0951742 7.47913 z " />
+  </g>
+</svg>

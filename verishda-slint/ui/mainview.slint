@@ -1,4 +1,4 @@
-import { StandardTableView , HorizontalBox, VerticalBox, ComboBox, Button, GroupBox} from "std-widgets.slint";
+import { StandardTableView , HorizontalBox, VerticalBox, ComboBox, Button, GroupBox, TextEdit} from "std-widgets.slint";
 
 export enum AnnouncementModel {
     NotAnnounced,
@@ -10,6 +10,7 @@ export struct PersonModel {
     name: string,
     is_self: bool,
     is_present: bool,
+    is_favorite: bool,
     announcements: [AnnouncementModel],
 }
 
@@ -29,6 +30,28 @@ component NameDisplay inherits HorizontalLayout {
     }
 }
 
+component FavStar inherits Image {
+    in property <bool> is_favorite: false;
+    image-fit: ImageFit.contain;
+
+    width: 16px;
+    height: 16px;
+    touch:= TouchArea {}
+
+
+    states [
+        is_favorite when self.is_favorite: {
+            source: @image-url("icons/star.svg");
+        }
+        not_favorite_hover when touch.has-hover && !self.is_favorite: {
+            source: @image-url("icons/star_hollow.svg");
+        }
+        not_favorite when !touch.has-hover && !self.is_favorite: {
+        }
+    ]
+
+    
+}
 component PresenceCell inherits VerticalLayout {
     width: 30px;
 }
@@ -105,8 +128,16 @@ component PresenceGrid {
             }
         }
         for p in persons: HorizontalLayout {
-            NameDisplay {
-                person: p;
+            HorizontalLayout {
+                FavStar {
+                    height: 20px;
+                    horizontal-alignment: left;
+                    is_favorite: p.is-favorite;
+                }
+                n:= NameDisplay {
+                    person: p;
+                    alignment: LayoutAlignment.start;
+                }
             }
         
             for day_offset in 7: PresenceItem {
@@ -126,8 +157,8 @@ component PresenceGrid {
 export component SitePresenceView inherits Window {
 
     in property <[PersonModel]> persons: [
-        {name: "Uwe Pachler", is-present: true, is_self: true},
-        {name: "Horst Cresi", announcements: [
+        {name: "Uwe Pachler", is-present: true, is_self: true, is-favorite: true},
+        {name: "Horst Cresi", is-favorite: true, announcements: [
             AnnouncementModel.NotAnnounced, AnnouncementModel.PresenceAnnounced, AnnouncementModel.NotAnnounced, AnnouncementModel.NotAnnounced, AnnouncementModel.RecurringPresenceAnnounced
         ]},
         {name: "Brian Nürnberg"},
@@ -166,23 +197,74 @@ export component SitePresenceView inherits Window {
 
             out property <string> current_site_id <=> site_combo.current_site_id;
 
-            site_combo := ComboBox {
-
-                out property <string> current_site_id;
-    
-                function get_current_site_id() -> string {
-                    self.current-index >= 0 ? sites[self.current-index].id : ""
-                } 
-    
-                model: site_names;
-                selected(name) => {
-                    self.current_site_id = get_current_site_id();
-                    root.site_selected(get_current_site_id())
+            site_search := GridLayout{
+                
+                search_group:= HorizontalLayout {
+                    row: 0;
+                    Text {
+                        text: "Person: ";
+                        vertical-alignment: center;
+                        horizontal-stretch: 0;
+                    }
+                    search_text := TextInput {
+                        text: "";
+                        vertical-alignment: center;
+                        horizontal-stretch: 1;
+                    }
+                    horizontal-stretch: 1;
+                }
+                
+                
+                site_combo := ComboBox {
+                    row: 0;
+                    out property <string> current_site_id;
+        
+                    function get_current_site_id() -> string {
+                        self.current-index >= 0 ? sites[self.current-index].id : ""
+                    } 
+        
+                    model: site_names;
+                    selected(name) => {
+                        self.current_site_id = get_current_site_id();
+                        root.site_selected(get_current_site_id())
+                    }
                 }
             }
 
+            states [
+                choose-site when !search-button.checked: {
+                    search_group.visible: false;
+                    site_combo.visible: true;
+                }
+                search-site when search-button.checked: {
+                    search_group.visible: true;
+                    site_combo.visible: false;
+                }
+            ]
+            
+            search_button := Button {
+                checkable: true;
+                icon: @image-url("icons/search.svg");
+                clicked => {
+                    search-text.focus();
+                    root.refresh_requested();
+                }
+            }
+            favfilter_button := Button {
+                checkable: true;
+                states [
+                    checked when self.checked: {
+                        icon: @image-url("icons/star.svg");
+                    }
+                    unchecked when !self.checked: {
+                        icon: @image-url("icons/star_hollow.svg");
+                    }
+                ]
+                    
+            }
+
             Button {
-                icon: @image-url("icons/reload.png");
+                icon: @image-url("icons/reload.svg");
                 clicked => {
                     root.refresh_requested();
                 }
