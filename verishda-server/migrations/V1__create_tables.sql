@@ -27,7 +27,7 @@ CREATE TABLE user_announcements (
     user_id CHAR(36),
     site_id CHAR(36),
     present_on DATE,
-    recurring BOOLEAN;
+    recurring BOOLEAN
 );
 CREATE INDEX idx_user_announcements_user_id ON user_announcements (user_id);
 CREATE INDEX idx_user_announcements_site_id ON user_announcements (site_id);

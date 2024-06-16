@@ -1,6 +1,5 @@
 
 use dotenv::dotenv;
-use sqlx::postgres::PgPoolOptions;
 use anyhow::*;
 use verishda::config::Config;
 
@@ -37,8 +36,8 @@ async fn main(){
     log::debug!("connecting to database...");
     let pg_address = std::env::var("PG_ADDRESS")
     .expect("no postgres database connection configured, set PG_ADDRESS variable");
-    let pool = PgPoolOptions::new()
-        .connect(&pg_address).await.expect(&format!("could not connect to database {pg_address}"));
+    let pool = verishda::connect_db(&pg_address).await.expect(&format!("could not connect to database {pg_address}"));
+    log::debug!("connected.");
     
     let router = verishda::build_router(pool, config.clone());
     

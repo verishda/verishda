@@ -1,5 +1,6 @@
 use std::cell::OnceCell;
 use std::ops::{Deref, DerefMut};
+use std::str::FromStr;
 use std::sync::Arc;
 
 use anyhow::{anyhow, Result};
@@ -45,6 +46,8 @@ mod oidc_cache;
 mod error;
 pub mod config;
 mod scheme;
+
+refinery::embed_migrations!("migrations");
 
 const SWAGGER_SPEC_URL: &str = "/api/public/openapi.yaml";
 
@@ -121,6 +124,45 @@ where
     E: std::error::Error,
 {
     (StatusCode::INTERNAL_SERVER_ERROR, err.to_string())
+}
+
+async fn migrate_db(url: &str) -> Result<()> {
+    // create connection for db migration to use
+    let mut config = tokio_postgres::Config::from_str(url)?;
+    let executable = std::env::args().into_iter().next().unwrap();
+    config.application_name(&executable);
+    let (mut client, con) = config.connect(tokio_postgres::NoTls).await?;
+
+    // spawn connection handler in background
+    tokio::spawn(async move {
+        if let Err(e) = con.await {
+            log::error!("connection error while database migration: {}", e);
+        }
+    });
+
+    // run migrations
+    log::info!("checking database for potential migrations...");
+    let report = migrations::runner().run_async(&mut client).await?;
+
+    // log migration results
+    if report.applied_migrations().is_empty() {
+        log::info!("database is up to date, no migrations applied.")
+    } else {
+        log::info!("applied migrations:");
+        for m in report.applied_migrations() {
+            log::info!("\t{m}");
+        }
+    }
+
+    Ok(())
+}
+
+
+pub async fn connect_db(url: &str) -> Result<Pool<Postgres>> {
+    migrate_db(url).await?;
+
+    // provide connection pool
+    Ok(Pool::connect(&url).await?)
 }
 
 pub fn build_router(pool: Pool<Postgres>, config: impl config::Config) -> Router

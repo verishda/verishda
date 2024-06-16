@@ -20,11 +20,12 @@ impl Config for ShuttleConfig{
 
 #[shuttle_runtime::main]
 async fn axum(
-    #[shuttle_shared_db::Postgres] pool: PgPool, 
+    #[shuttle_shared_db::Postgres] pg_url: String, 
     #[shuttle_runtime::Secrets] secret_store: SecretStore
 ) -> ShuttleAxum {
 
     let config = ShuttleConfig {secret_store};
 
+    let pool = verishda::connect_db(&pg_url).await?;
     Ok(verishda::build_router(pool, config).into())
 }
