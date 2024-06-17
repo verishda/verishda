@@ -188,7 +188,7 @@ components:
       type: oauth2
       flows:
         implicit:
-          authorizationUrl: https://lemur-5.cloud-iam.com/auth/realms/werischda/protocol/openid-connect/auth
+          authorizationUrl: https://lemur-5.cloud-iam.com/auth/realms/verishda/protocol/openid-connect/auth
           scopes:
             'write:pets': foo
             read:pets: bar

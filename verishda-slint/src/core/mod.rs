@@ -15,7 +15,7 @@ use crate::core::location::Location;
 
 mod location;
 
-const PUBLIC_ISSUER_URL: &str = "https://lemur-5.cloud-iam.com/auth/realms/werischda";
+const PUBLIC_ISSUER_URL: &str = "https://lemur-5.cloud-iam.com/auth/realms/verishda";
 const PUBLIC_CLIENT_ID: &str = "verishda-windows";
 
 #[derive(Default, Clone, Debug)]
