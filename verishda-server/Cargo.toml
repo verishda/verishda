@@ -44,7 +44,7 @@ axum = { version = "0.7.5", features = ["macros", "original-uri", "ws"] }
 axum-extra = {version="0.9.3", features=["typed-header"]}
 
 tokio = {version = "1.33.0", features=["full"] }
-sqlx = {version = "0.7", features=["runtime-tokio","tls-rustls","postgres"]}
+sqlx = { version = "0.7", features = ["runtime-tokio", "tls-rustls", "postgres", "chrono"] }
 
 shuttle-axum = "0.45.0"
 shuttle-runtime = "0.45.0"
@@ -52,3 +52,4 @@ shuttle-shared-db = {version="0.45.0", features=["postgres","sqlx"]}
 dashmap = "5.5.3"
 refinery = { version = "0.8.14", features = ["postgres", "tokio-postgres"] }
 tokio-postgres = "0.7"
+futures-util = "0.3.30"

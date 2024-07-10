@@ -46,6 +46,7 @@ mod oidc_cache;
 mod error;
 pub mod config;
 mod scheme;
+mod datamodel;
 
 refinery::embed_migrations!("migrations");
 
@@ -282,11 +283,25 @@ async fn handle_get_login_target(State(state): State<VerishdaState>, Query(code_
     }
 }
 
-#[debug_handler]
-async fn handle_get_sites_siteid_presence(DbCon(mut con): DbCon, _: State<VerishdaState>, auth_info: AuthInfo, Path(site_id): Path<String>) -> Result<Json<Vec<Presence>>, HandlerError> 
+fn range_from(offset: Option<u32>, limit: Option<u32>) -> std::ops::Range<u32> {
+    let start = if let Some(offset) = offset { offset } else {0};
+    let end = if let Some(limit) = limit {start + limit} else {u32::MAX};
+    std::ops::Range {start, end}
+}
 
-{
-    let presences = site::get_presence_on_site(&mut con, &auth_info.subject, &to_logged_as_name(&auth_info), &site_id).await?;
+#[derive(Deserialize)]
+struct PresenceQueryParams {
+    term: Option<String>,
+    offset: Option<u32>,
+    limit: Option<u32>
+}
+
+#[debug_handler]
+async fn handle_get_sites_siteid_presence(DbCon(mut con): DbCon, _: State<VerishdaState>, auth_info: AuthInfo, Path(site_id): Path<String>, Query(query): Query<PresenceQueryParams>) -> Result<Json<Vec<Presence>>, HandlerError> 
+{   
+    let term = query.term.as_ref().map(|s|s.as_str());
+    let range = range_from(query.offset, query.limit);
+    let presences = site::get_presence_on_site(&mut con, &auth_info.subject, &to_logged_as_name(&auth_info), &site_id, range, term).await?;
     Ok(Json(presences))
 }
 
@@ -301,15 +316,11 @@ fn to_logged_as_name(auth_info: &AuthInfo) -> String {
 }
 
 #[debug_handler(state=VerishdaState)]
-async fn handle_post_sites_siteid_hello(mut dbcon: DbCon, s: State<VerishdaState>, auth_info: AuthInfo, Path(site_id): Path<String>, _: State<ConnectionPool>) -> Result<Json<Vec<Presence>>, HandlerError> {
+async fn handle_post_sites_siteid_hello(mut dbcon: DbCon, s: State<VerishdaState>, auth_info: AuthInfo, Path(site_id): Path<String>, _: State<ConnectionPool>) -> Result<(), HandlerError> {
 
     let logged_as_name = to_logged_as_name(&auth_info);
     site::hello_site(&mut dbcon.0, &auth_info.subject, &logged_as_name, &site_id).await?;
-
-    // to return the current presences, proceed like with an ordinary
-    // presence request
-    return handle_get_sites_siteid_presence(dbcon, s, auth_info, Path(site_id)).await
-
+    Ok(())
 }
 
 #[debug_handler]

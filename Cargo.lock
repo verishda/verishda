@@ -4629,8 +4629,7 @@ dependencies = [
 [[package]]
 name = "postgres-protocol"
 version = "0.6.6"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "49b6c5ef183cd3ab4ba005f1ca64c21e8bd97ce4699cfea9e8d9a2c4958ca520"
+source = "git+https://github.com/upachler/rust-postgres.git?branch=bugfix/803-windows-connection-error-utf-8#6d4bc4d85abc47e98cb8075ca10d7a531b2490ac"
 dependencies = [
  "base64 0.21.7",
  "byteorder",
@@ -6211,6 +6210,7 @@ dependencies = [
  "atoi",
  "byteorder",
  "bytes",
+ "chrono",
  "crc",
  "crossbeam-queue",
  "either",
@@ -6293,6 +6293,7 @@ dependencies = [
  "bitflags 2.5.0",
  "byteorder",
  "bytes",
+ "chrono",
  "crc",
  "digest",
  "dotenvy",
@@ -6334,6 +6335,7 @@ dependencies = [
  "base64 0.21.7",
  "bitflags 2.5.0",
  "byteorder",
+ "chrono",
  "crc",
  "dotenvy",
  "etcetera",
@@ -6369,6 +6371,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b244ef0a8414da0bed4bb1910426e890b19e5e9bccc27ada6b797d05c55ae0aa"
 dependencies = [
  "atoi",
+ "chrono",
  "flume",
  "futures-channel",
  "futures-core",
@@ -7411,6 +7414,7 @@ dependencies = [
  "dashmap",
  "dotenv",
  "env_logger",
+ "futures-util",
  "http 1.1.0",
  "jwt-simple",
  "log",

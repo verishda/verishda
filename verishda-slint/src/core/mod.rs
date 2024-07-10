@@ -233,7 +233,7 @@ impl AppCore {
             };
 
             log::trace!("Getting presences for site {site}");
-            match client.handle_get_sites_siteid_presence(site).await {
+            match client.handle_get_sites_siteid_presence(site, None, None, None, None).await {
                 Ok(sites_response) => {
                     let presences = sites_response.into_inner();
                     println!("Got presences: {:?}", presences);

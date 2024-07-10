@@ -38,6 +38,30 @@ paths:
       operationId: handle_get_sites_siteid_presence
       parameters:
         - $ref: '#/components/parameters/SitePathParam'
+        - name: term
+          description: Optional search term for filtering users
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: favorites_only
+          description: Optional parameter to filter user list to only contain favorites
+          in: query
+          required: false
+          schema:
+            type: boolean
+        - name: offset
+          in: query
+          required: false
+          schema:
+            type: integer
+            format: i32
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            format: i32
       responses:
         '200':
           $ref: '#/components/responses/PresenceResponse'
@@ -54,8 +78,8 @@ paths:
       parameters:
         - $ref: '#/components/parameters/SitePathParam'
       responses:
-        '200':
-          $ref: '#/components/responses/PresenceResponse'
+        '202':
+          description: User successfully said hello
         '404':
           description: Site not found
       security:

@@ -6,3 +6,6 @@ members = [
     "verishda-slint",
     "verishda-dto",
 ]
+
+[patch.crates-io]
+postgres-protocol = {git="https://github.com/upachler/rust-postgres.git", branch="bugfix/803-windows-connection-error-utf-8"}

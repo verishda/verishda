@@ -1,7 +1,7 @@
-use std::collections::HashMap;
+use std::{collections::HashMap, ops::Range};
 
 use anyhow::Result;
-use chrono::NaiveDate;
+use chrono::{NaiveDate, NaiveDateTime};
 use sqlx::{Connection, Postgres, PgConnection, postgres::PgRow, Row};
 
 use verishda_dto::types::{Presence, PresenceAnnouncement, PresenceAnnouncementKind, Site};
@@ -42,7 +42,162 @@ pub(super) async fn hello_site(pg: &mut PgConnection, user_id: &str, logged_as_n
     Ok(())
 }
 
-pub(super) async fn get_presence_on_site(pg: &mut PgConnection, user_id: &str, logged_as_name: &str, site_id: &str) -> Result<Vec<Presence>> {
+
+pub async fn get_presence_on_site(pg: &mut PgConnection, user_id: &str, logged_as_name: &str, site_id: &str, range: Range<u32>, term: Option<&str>) -> Result<Vec<Presence>> {
+
+    let mut tr = pg.begin().await?;
+
+    // build offset limit from range and handle empty case without query
+    if range.is_empty() {
+        return Ok(Vec::new())
+    }
+
+    log::debug!("fetching user infos..");
+
+    let self_user_at_start = term.is_none();
+    let term = term.map(&str::to_string).unwrap_or(String::new());
+
+
+    // get user infos with presence info, but without announcements
+    let self_user_infos =     if self_user_at_start {
+        sqlx::query(
+            "
+            SELECT u.user_id, u.logged_as_name, l.last_seen
+            FROM user_info AS u
+            LEFT JOIN logged_into_site AS l ON l.user_id=u.user_id AND l.site_id=$1
+            WHERE u.user_id = $2
+            "
+        )
+        .bind(site_id)
+        .bind(user_id)
+        .fetch_optional(&mut *tr).await?
+    } else {
+        None
+    };
+
+    let offset;
+    let limit;
+    if self_user_at_start {
+        offset = u32::saturating_sub(range.start, 1);
+        limit = range.end - range.start - 1;
+    } else {
+        offset = range.start;
+        limit = range.end - range.start;
+    }
+
+    let user_infos = sqlx::query(
+        "
+        SELECT u.user_id, u.logged_as_name, l.last_seen
+        FROM user_info AS u
+        LEFT JOIN logged_into_site AS l ON l.user_id=u.user_id AND l.site_id=$2
+        WHERE ($1='' OR u.logged_as_name LIKE concat('%',$1,'%')) AND u.user_id <> $5
+        ORDER BY logged_as_name
+        OFFSET $3 LIMIT $4
+        "
+    )
+    .bind(term)
+    .bind(site_id)
+    .bind(offset as i32)
+    .bind(limit as i32)
+    .bind(user_id)
+    .fetch_all(&mut *tr).await?
+    ;
+
+    log::debug!("{} user infos fetched", user_infos.len());
+
+    // build presence objects in-order, in a tuple with the user_id (which is not part of Presence)
+    let mut presences = Vec::new();
+    for r in self_user_infos.iter().chain(user_infos.iter()) {
+
+        let last_seen: Option<NaiveDateTime> = r.get(0);
+        let presence_user_id: String = r.get::<Option<String>,_>(0).unwrap();
+        let is_self = presence_user_id == user_id;
+        let presence = Presence{
+            announcements: Vec::new(),
+            currently_present: last_seen.is_some(),
+            is_self,
+            logged_as_name: r.get::<Option<String>,_>(1).unwrap()
+        };
+        presences.push((presence_user_id, presence));
+    }
+
+    // query announcements for all user_ids in presences and build a map, mapping 
+    // user_ids to Vecs of Announcements
+    let user_ids = (&presences).iter().map(|p|p.0.clone()).collect::<Vec<_>>();
+    let mut user_announcements = sqlx::query("
+        SELECT a.user_id, a.present_on, a.recurring
+        FROM user_announcements AS a
+        WHERE a.site_id=$1 AND a.user_id = ANY($2)
+    ")
+    .bind(site_id)
+    .bind(&user_ids)
+    .fetch_all(&mut *tr).await.expect("cannot fetch announcements")
+    .iter()
+    .fold(HashMap::<String,Vec<PresenceAnnouncement>>::new(), |mut m, r|{
+        let user_id: String = r.get::<String,_>(0);
+        let present_on: NaiveDate = r.get::<NaiveDate,_>(1);
+
+        let recurring = r.get::<bool,_>(2);
+        if !m.contains_key(&user_id) {
+            m.insert(user_id.clone(), Vec::new());
+        }
+        let announcements = m.get_mut(&user_id).unwrap();
+
+        announcements.push(PresenceAnnouncement { 
+            date: present_on,
+            kind: if recurring {
+                PresenceAnnouncementKind::RecurringAnnouncement
+            } else {
+                PresenceAnnouncementKind::SingularAnnouncement
+            }
+        });
+
+        m
+    });
+    log::debug!("{} user announcements fetched and pre-processed", user_announcements.len());
+
+    // assemble presences and announcements, if any
+    presences.iter_mut()
+    .for_each(|(user_id, presence)|{
+        if let Some(a) = user_announcements.remove(user_id) {
+            presence.announcements = a;
+        }
+    })
+    ;
+
+    // if we start at offset 0 we must ensure we are starting with ourselves (the current user)
+    // - even if that user is not in the DB yet
+    if offset == 0 {
+        let first_presence = presences.get_mut(0).unwrap();
+        if first_presence.0 == user_id {
+            first_presence.1.is_self = true;
+        }
+        let has_self = first_presence.1.is_self;
+
+
+        if !has_self {
+            let p = Presence{
+                currently_present: false,
+                logged_as_name: logged_as_name.to_string(),
+                announcements: Vec::new(),
+                is_self: true,
+            };
+            let presences = std::iter::once((user_id.to_owned(),p))
+            .chain(presences)
+            .map(|(_,p)|p)
+            .collect();
+            return Ok(presences)
+        };
+    } 
+
+    let presences = presences.iter()
+    .map(|(_,p)|p.clone())
+    .collect();
+    
+    return Ok(presences)
+}
+
+pub(super) async fn _get_presence_on_site(pg: &mut PgConnection, user_id: &str, logged_as_name: &str, site_id: &str) -> Result<Vec<Presence>> {
 
     let stmt = String::new() +
     "SELECT u.user_id, u.logged_as_name, to_char(a.present_on, 'YYYY-MM-DD'), a.recurring
