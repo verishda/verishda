@@ -16,6 +16,7 @@ path = "src/bin/shuttle.rs"
 
 [dependencies]
 verishda-dto = {path="../verishda-dto"}
+verishda-config = {path="../verishda-config"}
 # date and time
 chrono = "0.4.38"
 # Useful crate to handle errors.
@@ -31,7 +32,6 @@ swagger-ui = "0.1"
 mime_guess = "2.0"
 log = "0.4.20"
 env_logger = "0.11.3"
-dotenv = "0.15"
 
 serde = {version="1.0.160", features=["derive"]}
 serde_json = "1.0.96"

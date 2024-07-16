@@ -10,6 +10,7 @@ use tokio::sync::Mutex;
 use core::Announcement;
 use slint::{Model, ModelRc, VecModel, Weak};
 use tokio::runtime::Handle;
+use verishda_config::{default_config, CompositeConfig, Config, EnvConfig};
 
 slint::include_modules!();
 
@@ -37,7 +38,7 @@ fn main() {
 }
 
 fn ui_main() {
-    let app_core = AppCore::new();
+     let app_core = AppCore::new(Box::new(mk_config()));
 
     let main_window = MainWindow::new().unwrap();
     let main_window_weak = main_window.as_weak();
@@ -156,6 +157,13 @@ fn ui_main() {
     slint::run_event_loop_until_quit().unwrap();
 
     app_core.blocking_lock().quit();
+}
+
+fn mk_config() -> impl Config {
+    CompositeConfig::from_configs(
+        Box::new(EnvConfig::from_env()), 
+        Box::new(default_config())
+    )
 }
 
 #[cfg(windows)]

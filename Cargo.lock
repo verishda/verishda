@@ -7409,7 +7409,6 @@ dependencies = [
  "bytes",
  "chrono",
  "dashmap",
- "dotenv",
  "env_logger",
  "http 1.1.0",
  "jwt-simple",
@@ -7427,8 +7426,17 @@ dependencies = [
  "thiserror",
  "tokio",
  "tokio-postgres",
+ "verishda-config",
  "verishda-dto",
  "wit-bindgen-rust",
+]
+
+[[package]]
+name = "verishda-config"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "dotenv",
 ]
 
 [[package]]
@@ -7472,6 +7480,7 @@ dependencies = [
  "tokio-util",
  "tray-item",
  "url",
+ "verishda-config",
  "verishda-dto",
  "webbrowser",
  "windows",

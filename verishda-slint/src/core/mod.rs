@@ -10,13 +10,11 @@ use tokio::sync::{Mutex, Notify};
 use url::Url;
 use log::*;
 
+use verishda_config::Config;
 use verishda_dto::{self, types::{PresenceAnnouncement, PresenceAnnouncementKind, PresenceAnnouncements}};
 use crate::core::location::Location;
 
 mod location;
-
-const PUBLIC_ISSUER_URL: &str = "https://lemur-5.cloud-iam.com/auth/realms/verishda";
-const PUBLIC_CLIENT_ID: &str = "verishda-windows";
 
 #[derive(Default, Clone, Debug)]
 pub enum Announcement {
@@ -35,6 +33,7 @@ struct Credentials {
 
 
 pub struct AppCore {
+    config: Box<dyn Config>,
     location_handler: Arc<Mutex<location::LocationHandler>>,
     oidc_metadata: Option<CoreProviderMetadata>,
     oidc_client: Option<CoreClient>,
@@ -75,9 +74,10 @@ enum AppCoreCommand {
 }
 
 impl AppCore {
-    pub fn new() -> Arc<Mutex<Self>> {
+    pub fn new(config: Box<dyn Config>) -> Arc<Mutex<Self>> {
         let (tx, mut rx) = tokio::sync::mpsc::channel::<AppCoreCommand>(1);
         let app_core = Self {
+            config,
             location_handler: location::LocationHandler::new(),
             command_tx: tx,
             oidc_metadata: None,
@@ -417,7 +417,9 @@ impl AppCore {
     }
 
     pub async fn init(&mut self) -> Result<()>{
-        self.init_provider(PUBLIC_ISSUER_URL, PUBLIC_CLIENT_ID).await?;
+        let issuer_url = self.config.get("ISSUER_URL")?;
+        let client_id = self.config.get("CLIENT_ID")?;
+        self.init_provider(&issuer_url, &client_id).await?;
         Ok(())
     }
 

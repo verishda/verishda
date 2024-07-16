@@ -12,7 +12,7 @@ use axum::extract::ws::{WebSocket, WebSocketUpgrade};
 use axum_extra::{TypedHeader, headers::{Authorization, authorization::Bearer}};
 use axum_extra::typed_header::TypedHeaderRejectionReason;
 use bytes::Bytes;
-use config::Config;
+use verishda_config::Config;
 use dashmap::DashMap;
 use error::HandlerError;
 use http::{StatusCode, request::Parts};
@@ -44,7 +44,6 @@ mod store;
 mod memory_store;
 mod oidc_cache;
 mod error;
-pub mod config;
 mod scheme;
 
 refinery::embed_migrations!("migrations");
@@ -68,7 +67,7 @@ impl Clone for VerishdaState {
     }
 }
 
-pub fn init_logging(cfg: impl config::Config) {
+pub fn init_logging(cfg: impl verishda_config::Config) {
     let rust_log_config = cfg.get("RUST_LOG").ok();
     let mut logger_builder = env_logger::builder();
     if let Some(rust_log) = rust_log_config {
@@ -165,7 +164,7 @@ pub async fn connect_db(url: &str) -> Result<Pool<Postgres>> {
     Ok(Pool::connect(&url).await?)
 }
 
-pub fn build_router(pool: Pool<Postgres>, config: impl config::Config) -> Router
+pub fn build_router(pool: Pool<Postgres>, config: impl verishda_config::Config) -> Router
 {
     let pending_logins = Arc::new(DashMap::with_capacity(127));
     let state = VerishdaState { pool, config: config.clone_box_dyn(), pending_logins };

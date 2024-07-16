@@ -5,4 +5,5 @@ members = [
     "verishda-server",
     "verishda-slint",
     "verishda-dto",
+    "verishda-config",
 ]
