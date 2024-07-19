@@ -6,3 +6,8 @@ members = [
     "verishda-slint",
     "verishda-dto",
 ]
+
+[patch.crates-io]
+
+postgres-protocol = {git="https://github.com/sfackler/rust-postgres.git", branch="master"}
+tokio-postgres = {git="https://github.com/sfackler/rust-postgres.git", branch="master"}
