@@ -5,6 +5,7 @@ members = [
     "verishda-server",
     "verishda-slint",
     "verishda-dto",
+    "verishda-config",
 ]
 
 [patch.crates-io]

@@ -1,7 +1,7 @@
 use shuttle_axum::ShuttleAxum;
 use sqlx::PgPool;
 use shuttle_runtime::SecretStore;
-use verishda::config::Config;
+use verishda_config::{default_config, CompositeConfig, Config};
 use anyhow::{Result, anyhow};
 
 #[derive(Clone)]
@@ -24,7 +24,11 @@ async fn axum(
     #[shuttle_runtime::Secrets] secret_store: SecretStore
 ) -> ShuttleAxum {
 
-    let config = ShuttleConfig {secret_store};
+    let shuttle_config = ShuttleConfig {secret_store};
+    let config = CompositeConfig::from_configs(
+        Box::new(shuttle_config), 
+        Box::new(default_config())
+    );
 
     let pool = verishda::connect_db(&pg_url).await?;
     Ok(verishda::build_router(pool, config).into())

@@ -10,6 +10,7 @@ use tokio::sync::Mutex;
 use core::Announcement;
 use slint::{Model, ModelRc, VecModel, Weak};
 use tokio::runtime::Handle;
+use verishda_config::{default_config, CompositeConfig, Config, EnvConfig};
 
 slint::include_modules!();
 
@@ -37,7 +38,7 @@ fn main() {
 }
 
 fn ui_main() {
-    let app_core = AppCore::new();
+     let app_core = AppCore::new(Box::new(mk_config()));
 
     let main_window = MainWindow::new().unwrap();
     let main_window_weak = main_window.as_weak();
@@ -158,6 +159,13 @@ fn ui_main() {
     app_core.blocking_lock().quit();
 }
 
+fn mk_config() -> impl Config {
+    CompositeConfig::from_configs(
+        Box::new(EnvConfig::from_env()), 
+        Box::new(default_config())
+    )
+}
+
 #[cfg(windows)]
 fn init_systray<FO, FQ>(open_handler: FO, quit_handler: FQ) -> tray_item::TrayItem
 where
@@ -193,7 +201,7 @@ fn start_fetch_provider_metadata(main_window: Weak<MainWindow>, app_core: Arc<Mu
                     })
                     .unwrap();
             }
-            Err(_) => panic!("Failed to fetch provider metadata"),
+            Err(e) => panic!("Failed to fetch provider metadata {e}"),
         };
     });
 }
