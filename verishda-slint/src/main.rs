@@ -201,7 +201,7 @@ fn start_fetch_provider_metadata(main_window: Weak<MainWindow>, app_core: Arc<Mu
                     })
                     .unwrap();
             }
-            Err(_) => panic!("Failed to fetch provider metadata"),
+            Err(e) => panic!("Failed to fetch provider metadata {e}"),
         };
     });
 }

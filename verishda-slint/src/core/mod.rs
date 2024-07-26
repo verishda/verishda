@@ -53,9 +53,6 @@ pub enum CoreEvent {
     PresencesChanged(Vec<verishda_dto::types::Presence>),
 }
 
-const PUBLIC_API_BASE_URL: &str = "https://verishda.shuttleapp.rs";
-//const PUBLIC_API_BASE_URL: &str = "http://127.0.0.1:3000";
-
 #[derive(serde::Serialize, serde::Deserialize)]
 enum LoginPipeMessage {
     Cancel,
@@ -180,7 +177,7 @@ impl AppCore {
                 .connection_verbose(true)
                 .build()
                 .expect("client creation failed");
-            let client = verishda_dto::Client::new_with_client(PUBLIC_API_BASE_URL, inner);
+            let client = verishda_dto::Client::new_with_client(&self.api_base_url(), inner);
             Ok(client)
         } else {
             Err(anyhow::anyhow!("Not logged in"))
@@ -291,9 +288,12 @@ impl AppCore {
             on_core_event(event);
         }
     }
+    fn api_base_url(&self) -> String{
+        self.config.get("API_BASE_URL").unwrap()
+    }
 
     fn redirect_url(&self) -> String {
-        PUBLIC_API_BASE_URL.to_owned() + "/api/public/oidc/login-target"
+        self.api_base_url() + "/api/public/oidc/login-target"
     }
 
     pub fn start_login(app_core: Arc<Mutex<AppCore>>) -> Result<()> 
@@ -319,7 +319,8 @@ impl AppCore {
         };
         let app_core = app_core.clone();
 
-        let ws_url = PUBLIC_API_BASE_URL.to_owned() + "/api/public/oidc/login-requests/" + csrf_token.secret();
+        let baseurl = app_core.blocking_lock().api_base_url();
+        let ws_url = baseurl + "/api/public/oidc/login-requests/" + csrf_token.secret();
         let mut ws_url = Url::parse(&ws_url).unwrap();
         match ws_url.scheme() {
             "http" => ws_url.set_scheme("ws").unwrap(),
