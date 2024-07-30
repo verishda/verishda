@@ -1,36 +1,17 @@
 
-use dotenv::dotenv;
 use anyhow::*;
-use verishda::config::Config;
+use verishda_config::{default_config, CompositeConfig, EnvConfig};
 
-fn init_dotenv() {
-    if let Result::Ok(path) = dotenv() {
-        let path = path.to_string_lossy();
-        println!("additional environment variables loaded from {path}");
-    }
-}
-
-#[derive(Clone)]
-struct EnvConfig;
-
-impl Config for EnvConfig{
-    fn get(&self, key: &str) -> Result<String> {
-        std::env::var(key).map_err(|_| anyhow!("no such environment variable {key}"))
-    }
-    fn clone_box_dyn(&self) -> Box<dyn Config> {
-        Box::new(self.clone())
-    }
-}
 
 #[tokio::main]
 async fn main(){
     let executable_name = std::env::args().next().unwrap_or_else(||"unknown".to_string());
     println!("starting {executable_name}...");
 
-    init_dotenv();
-
-
-    let config = EnvConfig;
+    let config = CompositeConfig::from_configs(
+        Box::new(EnvConfig::from_env()),
+        Box::new(default_config())
+    );
     verishda::init_logging(config.clone());
 
     log::debug!("connecting to database...");

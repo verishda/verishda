@@ -4629,9 +4629,9 @@ dependencies = [
 [[package]]
 name = "postgres-protocol"
 version = "0.6.6"
-source = "git+https://github.com/upachler/rust-postgres.git?branch=bugfix/803-windows-connection-error-utf-8#6d4bc4d85abc47e98cb8075ca10d7a531b2490ac"
+source = "git+https://github.com/sfackler/rust-postgres.git?branch=master#647a9256b80ef961b8065678f41745ca040202b5"
 dependencies = [
- "base64 0.21.7",
+ "base64 0.22.1",
  "byteorder",
  "bytes",
  "fallible-iterator",
@@ -4646,8 +4646,7 @@ dependencies = [
 [[package]]
 name = "postgres-types"
 version = "0.2.6"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8d2234cdee9408b523530a9b6d2d6b373d1db34f6a8e51dc03ded1828d7fb67c"
+source = "git+https://github.com/sfackler/rust-postgres.git?branch=master#a1bdd0bf15325cdc05fcfe3c0671953b2a8c7981"
 dependencies = [
  "bytes",
  "fallible-iterator",
@@ -6787,8 +6786,7 @@ dependencies = [
 [[package]]
 name = "tokio-postgres"
 version = "0.7.10"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d340244b32d920260ae7448cb72b6e238bddc3d4f7603394e7dd46ed8e48f5b8"
+source = "git+https://github.com/sfackler/rust-postgres.git?branch=master#a1bdd0bf15325cdc05fcfe3c0671953b2a8c7981"
 dependencies = [
  "async-trait",
  "byteorder",
@@ -7431,8 +7429,17 @@ dependencies = [
  "thiserror",
  "tokio",
  "tokio-postgres",
+ "verishda-config",
  "verishda-dto",
  "wit-bindgen-rust",
+]
+
+[[package]]
+name = "verishda-config"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "dotenv",
 ]
 
 [[package]]
@@ -7476,6 +7483,7 @@ dependencies = [
  "tokio-util",
  "tray-item",
  "url",
+ "verishda-config",
  "verishda-dto",
  "webbrowser",
  "windows",

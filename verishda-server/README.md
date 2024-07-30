@@ -19,13 +19,9 @@ Beware: you need to configure your server first!
 
 ## Configure
 
-The verishda server is configured using environment variables (or Shuttle secrets, which work the same way)
+The verishda server is configured using environment variables (or Shuttle secrets, which work the same way).
 
-We need the following configuration variables:
-* `PG_ADDRESS`: the URL to reach the Postgres database. Note that the database must have beein initialized with the `create_tables.sql` script in the root directory. Not used when deployed in Shuttle, as they provide the DB connection directly - otherwise REQUIRED.
-* `ISSUER_URL`: The issuer URL of the OpenID service to use (tested: [Keycloak](https://www.keycloak.org)). The issuer URL can be found in the `.well-known` auto-config URL that OpenID identity servers provide. REQUIRED.
-* `RUST_LOG`: Logging configuration. If provided, contains a string describing the logging settings. See the [`env_logger` create documenation](https://docs.rs/env_logger/latest/env_logger/#enabling-logging) for details. OPTIONAL
-* `FORWARDED_PROTO`: When configured behind a reverse proxy that terminates TLS, this option can override the calling URI scheme detection. Not needed if the reverse proxy sets the `X-Forwarded-Proto` header. When deploying to Shuttle hosting, set to `https` (but don't set it when testing the shuttle app locally).
+For a list of available configuration variables, [see the config subproject](../verishda-config/README)
 
 In order to use the `swagger-ui` built into the server, you'll need to create a client (for Keycloak, this is described [here](https://www.keycloak.org/docs/latest/server_admin/index.html#_oidc_clients)). In this guide, we'll assume you called the client 'swagger' (but you can call it anything you want). Also make sure that you'll add `<base-url>/api/public/*` as a redirection URL. So if you're running the server on `localhost:3000` for local development, the redirect URL is `http://localhost:3000/api/public/*`.
 In Shuttle, this could for instance be `https://verishda.shuttleapp.rs/api/public/*`

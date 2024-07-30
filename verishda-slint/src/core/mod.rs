@@ -10,13 +10,11 @@ use tokio::sync::{Mutex, Notify};
 use url::Url;
 use log::*;
 
+use verishda_config::Config;
 use verishda_dto::{self, types::{PresenceAnnouncement, PresenceAnnouncementKind, PresenceAnnouncements}};
 use crate::core::location::Location;
 
 mod location;
-
-const PUBLIC_ISSUER_URL: &str = "https://lemur-5.cloud-iam.com/auth/realms/verishda";
-const PUBLIC_CLIENT_ID: &str = "verishda-windows";
 
 #[derive(Default, Clone, Debug)]
 pub enum Announcement {
@@ -35,6 +33,7 @@ struct Credentials {
 
 
 pub struct AppCore {
+    config: Box<dyn Config>,
     location_handler: Arc<Mutex<location::LocationHandler>>,
     oidc_metadata: Option<CoreProviderMetadata>,
     oidc_client: Option<CoreClient>,
@@ -54,9 +53,6 @@ pub enum CoreEvent {
     PresencesChanged(Vec<verishda_dto::types::Presence>),
 }
 
-const PUBLIC_API_BASE_URL: &str = "https://verishda.shuttleapp.rs";
-//const PUBLIC_API_BASE_URL: &str = "http://127.0.0.1:3000";
-
 #[derive(serde::Serialize, serde::Deserialize)]
 enum LoginPipeMessage {
     Cancel,
@@ -75,9 +71,10 @@ enum AppCoreCommand {
 }
 
 impl AppCore {
-    pub fn new() -> Arc<Mutex<Self>> {
+    pub fn new(config: Box<dyn Config>) -> Arc<Mutex<Self>> {
         let (tx, mut rx) = tokio::sync::mpsc::channel::<AppCoreCommand>(1);
         let app_core = Self {
+            config,
             location_handler: location::LocationHandler::new(),
             command_tx: tx,
             oidc_metadata: None,
@@ -180,7 +177,7 @@ impl AppCore {
                 .connection_verbose(true)
                 .build()
                 .expect("client creation failed");
-            let client = verishda_dto::Client::new_with_client(PUBLIC_API_BASE_URL, inner);
+            let client = verishda_dto::Client::new_with_client(&self.api_base_url(), inner);
             Ok(client)
         } else {
             Err(anyhow::anyhow!("Not logged in"))
@@ -291,9 +288,12 @@ impl AppCore {
             on_core_event(event);
         }
     }
+    fn api_base_url(&self) -> String{
+        self.config.get("API_BASE_URL").unwrap()
+    }
 
     fn redirect_url(&self) -> String {
-        PUBLIC_API_BASE_URL.to_owned() + "/api/public/oidc/login-target"
+        self.api_base_url() + "/api/public/oidc/login-target"
     }
 
     pub fn start_login(app_core: Arc<Mutex<AppCore>>) -> Result<()> 
@@ -319,7 +319,8 @@ impl AppCore {
         };
         let app_core = app_core.clone();
 
-        let ws_url = PUBLIC_API_BASE_URL.to_owned() + "/api/public/oidc/login-requests/" + csrf_token.secret();
+        let baseurl = app_core.blocking_lock().api_base_url();
+        let ws_url = baseurl + "/api/public/oidc/login-requests/" + csrf_token.secret();
         let mut ws_url = Url::parse(&ws_url).unwrap();
         match ws_url.scheme() {
             "http" => ws_url.set_scheme("ws").unwrap(),
@@ -417,7 +418,9 @@ impl AppCore {
     }
 
     pub async fn init(&mut self) -> Result<()>{
-        self.init_provider(PUBLIC_ISSUER_URL, PUBLIC_CLIENT_ID).await?;
+        let issuer_url = self.config.get("ISSUER_URL")?;
+        let client_id = self.config.get("CLIENT_ID")?;
+        self.init_provider(&issuer_url, &client_id).await?;
         Ok(())
     }
 
