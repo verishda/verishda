@@ -158,18 +158,15 @@ pub async fn get_presence_on_site(pg: &mut PgConnection, user_id: &str, logged_a
 
     let (offset, limit) = range_to_sql_offset_limit(range, self_user_at_start);
 
-    let exclude_user_id = if self_user_at_start {
-        user_id
-    } else {
-        ""
-    };
+    let exclude_user_id = self_user_at_start;
 
     let user_infos = sqlx::query(
         "
         SELECT u.user_id, u.logged_as_name, l.last_seen
         FROM user_info AS u
         LEFT JOIN logged_into_site AS l ON l.user_id=u.user_id AND l.site_id=$2
-        WHERE ($1='' OR u.logged_as_name LIKE concat('%',$1,'%')) AND u.user_id <> $5
+        WHERE ($1='' OR lower(u.logged_as_name) LIKE concat('%',lower($1),'%')) 
+        AND ($6 IS FALSE OR u.user_id <> $5)
         ORDER BY logged_as_name
         OFFSET $3 LIMIT $4
         "
@@ -178,6 +175,7 @@ pub async fn get_presence_on_site(pg: &mut PgConnection, user_id: &str, logged_a
     .bind(site_id)
     .bind(offset as i32)
     .bind(limit as i32)
+    .bind(user_id)
     .bind(exclude_user_id)
     .fetch_all(&mut *tr).await?;
 
