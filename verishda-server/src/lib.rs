@@ -282,17 +282,17 @@ async fn handle_get_login_target(State(state): State<VerishdaState>, Query(code_
     }
 }
 
-fn range_from(offset: Option<u32>, limit: Option<u32>) -> std::ops::Range<u32> {
+fn range_from(offset: Option<i32>, limit: Option<i32>) -> std::ops::Range<i32> {
     let start = if let Some(offset) = offset { offset } else {0};
-    let end = if let Some(limit) = limit {start + limit} else {u32::MAX};
+    let end = if let Some(limit) = limit {start + limit} else {i32::MAX};
     std::ops::Range {start, end}
 }
 
 #[derive(Deserialize)]
 struct PresenceQueryParams {
     term: Option<String>,
-    offset: Option<u32>,
-    limit: Option<u32>
+    offset: Option<i32>,
+    limit: Option<i32>
 }
 
 #[debug_handler]

@@ -1,7 +1,7 @@
 use std::{collections::HashMap, ops::Range};
 
 use anyhow::Result;
-use chrono::{NaiveDate, NaiveDateTime};
+use chrono::{NaiveDate, NaiveDateTime, NaiveTime, TimeDelta, Utc};
 use sqlx::{Connection, Postgres, PgConnection, postgres::PgRow, Row};
 
 use verishda_dto::types::{Presence, PresenceAnnouncement, PresenceAnnouncementKind, Site};
@@ -42,8 +42,79 @@ pub(super) async fn hello_site(pg: &mut PgConnection, user_id: &str, logged_as_n
     Ok(())
 }
 
+fn range_to_sql_offset_limit(range: Range<i32>, reserve_first: bool) -> (i32, i32) {
+    let offset;
+    let limit;
+    if reserve_first {
+        offset = i32::max(0, i32::saturating_sub(range.start, 1));
+        limit = range.end - range.start - 1;
+    } else {
+        offset = range.start;
+        limit = range.end - range.start;
+    }
 
-pub async fn get_presence_on_site(pg: &mut PgConnection, user_id: &str, logged_as_name: &str, site_id: &str, range: Range<u32>, term: Option<&str>) -> Result<Vec<Presence>> {
+    (offset, limit)
+}
+
+#[test]
+fn test_range_to_offset_limit() {
+    assert_eq!(
+        range_to_sql_offset_limit(0..0, false),
+        (0,0)
+    );
+    assert_eq!(
+        range_to_sql_offset_limit(0..i32::MAX, false),
+        (0,i32::MAX)
+    );
+
+    assert_eq!(
+        range_to_sql_offset_limit(0..i32::MAX, true),
+        (0,i32::MAX-1)
+    );
+    assert_eq!(
+        range_to_sql_offset_limit(0..10, true),
+        (0,9)
+    );
+    assert_eq!(
+        range_to_sql_offset_limit(1..10, true),
+        (0,8)
+    );
+    assert_eq!(
+        range_to_sql_offset_limit(2..10, true),
+        (1,7)
+    );
+    assert_eq!(
+        range_to_sql_offset_limit(3..10, true),
+        (2,6)
+    );
+
+}
+
+fn pgrow_to_userid_presence(r: &PgRow, self_user_id: &str) -> (String, Presence) {
+    let last_seen: Option<NaiveDateTime> = r.get(2);
+    let presence_user_id: String = r.get::<Option<String>,_>(0).unwrap();
+    let is_self = presence_user_id == self_user_id;
+    let five_minutes_ago = Utc::now().naive_local().checked_sub_signed(TimeDelta::minutes(5)).unwrap();
+    let presence = Presence{
+        announcements: Vec::new(),
+        currently_present: last_seen.filter(|d|five_minutes_ago < *d).is_some(),
+        is_self,
+        logged_as_name: r.get::<Option<String>,_>(1).unwrap()
+    };
+
+    (presence_user_id, presence)
+}
+
+fn self_presence_from_name(logged_as_name: &str) -> Presence {
+    Presence{
+        currently_present: false,
+        logged_as_name: logged_as_name.to_string(),
+        announcements: Vec::new(),
+        is_self: true,
+    }
+}
+
+pub async fn get_presence_on_site(pg: &mut PgConnection, user_id: &str, logged_as_name: &str, site_id: &str, range: Range<i32>, term: Option<&str>) -> Result<Vec<Presence>> {
 
     let mut tr = pg.begin().await?;
 
@@ -57,10 +128,11 @@ pub async fn get_presence_on_site(pg: &mut PgConnection, user_id: &str, logged_a
     let self_user_at_start = term.is_none();
     let term = term.map(&str::to_string).unwrap_or(String::new());
 
-
-    // get user infos with presence info, but without announcements
-    let self_user_infos =     if self_user_at_start {
-        sqlx::query(
+    // get user infos with presence info, but without announcements, 
+    // if we need it (result window starting from index 0, self user at start of list)
+    let self_user_infos;     
+    if self_user_at_start && range.start == 0 {
+        let row = sqlx::query(
             "
             SELECT u.user_id, u.logged_as_name, l.last_seen
             FROM user_info AS u
@@ -70,20 +142,27 @@ pub async fn get_presence_on_site(pg: &mut PgConnection, user_id: &str, logged_a
         )
         .bind(site_id)
         .bind(user_id)
-        .fetch_optional(&mut *tr).await?
+        .fetch_optional(&mut *tr).await?;
+
+        // map existing self user to Presence, or if not found
+        // update userinfo and return synthetic presence
+        self_user_infos = row
+        .map(|row|pgrow_to_userid_presence(&row, user_id))
+        .or_else(||{
+            Some((user_id.to_owned(), self_presence_from_name(logged_as_name)))
+        })
+        
     } else {
-        None
+        self_user_infos = None
     };
 
-    let offset;
-    let limit;
-    if self_user_at_start {
-        offset = u32::saturating_sub(range.start, 1);
-        limit = range.end - range.start - 1;
+    let (offset, limit) = range_to_sql_offset_limit(range, self_user_at_start);
+
+    let exclude_user_id = if self_user_at_start {
+        user_id
     } else {
-        offset = range.start;
-        limit = range.end - range.start;
-    }
+        ""
+    };
 
     let user_infos = sqlx::query(
         "
@@ -99,27 +178,21 @@ pub async fn get_presence_on_site(pg: &mut PgConnection, user_id: &str, logged_a
     .bind(site_id)
     .bind(offset as i32)
     .bind(limit as i32)
-    .bind(user_id)
-    .fetch_all(&mut *tr).await?
+    .bind(exclude_user_id)
+    .fetch_all(&mut *tr).await?;
+
+    let user_infos = user_infos
+    .iter()
+    .map(|r|pgrow_to_userid_presence(r, user_id))
+    .collect::<Vec<(String,Presence)>>()
     ;
 
     log::debug!("{} user infos fetched", user_infos.len());
 
     // build presence objects in-order, in a tuple with the user_id (which is not part of Presence)
-    let mut presences = Vec::new();
-    for r in self_user_infos.iter().chain(user_infos.iter()) {
-
-        let last_seen: Option<NaiveDateTime> = r.get(0);
-        let presence_user_id: String = r.get::<Option<String>,_>(0).unwrap();
-        let is_self = presence_user_id == user_id;
-        let presence = Presence{
-            announcements: Vec::new(),
-            currently_present: last_seen.is_some(),
-            is_self,
-            logged_as_name: r.get::<Option<String>,_>(1).unwrap()
-        };
-        presences.push((presence_user_id, presence));
-    }
+    let presences = self_user_infos.iter()
+    .chain(user_infos.iter())
+    .collect::<Vec<&(String,Presence)>>();
 
     // query announcements for all user_ids in presences and build a map, mapping 
     // user_ids to Vecs of Announcements
@@ -157,41 +230,14 @@ pub async fn get_presence_on_site(pg: &mut PgConnection, user_id: &str, logged_a
     log::debug!("{} user announcements fetched and pre-processed", user_announcements.len());
 
     // assemble presences and announcements, if any
-    presences.iter_mut()
-    .for_each(|(user_id, presence)|{
+    let presences = presences.iter()
+    .map(|(user_id,p)|{
+        let mut presence = p.clone();
         if let Some(a) = user_announcements.remove(user_id) {
             presence.announcements = a;
         }
+        presence
     })
-    ;
-
-    // if we start at offset 0 we must ensure we are starting with ourselves (the current user)
-    // - even if that user is not in the DB yet
-    if offset == 0 {
-        let first_presence = presences.get_mut(0).unwrap();
-        if first_presence.0 == user_id {
-            first_presence.1.is_self = true;
-        }
-        let has_self = first_presence.1.is_self;
-
-
-        if !has_self {
-            let p = Presence{
-                currently_present: false,
-                logged_as_name: logged_as_name.to_string(),
-                announcements: Vec::new(),
-                is_self: true,
-            };
-            let presences = std::iter::once((user_id.to_owned(),p))
-            .chain(presences)
-            .map(|(_,p)|p)
-            .collect();
-            return Ok(presences)
-        };
-    } 
-
-    let presences = presences.iter()
-    .map(|(_,p)|p.clone())
     .collect();
     
     return Ok(presences)
