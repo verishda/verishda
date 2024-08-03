@@ -35,6 +35,13 @@ paths:
   /api/sites/{siteId}/presence:
     get:
       summary: See who is present at the specified site
+      description: Will respond with a list of objects, each representing
+        the presence of a user. There will always be a presence returned
+        for the current user at the start of the result list, unless the 
+        search term parameter is used. In that case, the current user's
+        presence will be returned only if it matches the search term, and
+        won't be forced to appear at the start of the result list.
+        Presences are ordered by their user display name.
       operationId: handle_get_sites_siteid_presence
       parameters:
         - $ref: '#/components/parameters/SitePathParam'
@@ -109,7 +116,29 @@ paths:
         - petstore_auth:
             - write:pets
             - read:pets
-            
+  /api/self/favorites/{userId}:
+    parameters:
+      - $ref: '#/components/parameters/UserIdPathParam'
+    put:
+      operationId: handle_put_favorite
+      description: 'make given user a favourite user'
+      responses:
+        '200':
+          description: 'userId was added to favorites'
+      security:
+        - petstore_auth: []
+
+    delete:
+      operationId: handle_delete_favorite
+      description: 'remove given user from favorites'
+      responses:
+        '200':
+          description: 'userId was deleted from favorites'
+        '404':
+          description: 'userId not present in favourites'
+      security:
+        - petstore_auth: []
+
 components:
   responses:
     PresenceResponse:
@@ -123,6 +152,12 @@ components:
   parameters:
     SitePathParam:
       name: siteId
+      schema:
+        type: string
+      in: path
+      required: true
+    UserIdPathParam:
+      name: userId
       schema:
         type: string
       in: path
@@ -159,11 +194,16 @@ components:
         has a presence announced. Absent persons without presence
         announcements will not be delivered.
       required:
+        - user_id
         - logged_as_name
         - is_self
         - currently_present
         - announced_dates
+        - is_favorite
       properties:
+        user_id:
+          type: string
+          example: '688e7d9b-4a8e-4274-9b70-81d2ea2ded6a'
         logged_as_name:
           type: string
           example: 'Maxi Mustermax'
@@ -174,6 +214,10 @@ components:
           description: >-
             Declares whether the named user is currently present. A
             user may not be present, but still have presence announcements.
+        is_favorite:
+          type: boolean
+          description: >-
+            This particular user is a favorite of the current user.
         announcements:
           type: array
           items:

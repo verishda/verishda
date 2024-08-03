@@ -7,6 +7,7 @@ use anyhow::{anyhow, Result};
 use axum::body::Body;
 use axum::debug_handler;
 use axum::extract::{ws, FromRef, Host, OriginalUri, Query, State};
+use axum::routing::delete;
 use axum::{Router, routing::{get, post, put}, response::{Response, IntoResponse, Redirect, Html}, Json, extract::{Path, FromRequestParts}, async_trait, RequestPartsExt, Extension};
 use axum::extract::ws::{WebSocket, WebSocketUpgrade};
 use axum_extra::{TypedHeader, headers::{Authorization, authorization::Bearer}};
@@ -178,6 +179,8 @@ pub fn build_router(pool: Pool<Postgres>, config: impl verishda_config::Config) 
     .route("/api/sites/:siteId/presence", get(handle_get_sites_siteid_presence))
     .route("/api/sites/:siteId/hello", post(handle_post_sites_siteid_hello))
     .route("/api/sites/:siteId/announce", put(handle_put_announce))
+    .route("/api/self/favorites/:userId", put(handle_put_favorite))
+    .route("/api/self/favorites/:userId", delete(handle_delete_favorite))
     .route("/", get(handle_get_fallback))
     .route("/*path", get(handle_get_fallback))
     .layer(Extension(MemoryStore::new()))
@@ -291,6 +294,7 @@ fn range_from(offset: Option<i32>, limit: Option<i32>) -> std::ops::Range<i32> {
 #[derive(Deserialize)]
 struct PresenceQueryParams {
     term: Option<String>,
+    favorites_only: Option<bool>,
     offset: Option<i32>,
     limit: Option<i32>
 }
@@ -299,8 +303,9 @@ struct PresenceQueryParams {
 async fn handle_get_sites_siteid_presence(DbCon(mut con): DbCon, _: State<VerishdaState>, auth_info: AuthInfo, Path(site_id): Path<String>, Query(query): Query<PresenceQueryParams>) -> Result<Json<Vec<Presence>>, HandlerError> 
 {   
     let term = query.term.as_ref().map(|s|s.as_str());
+    let favorites_only = query.favorites_only.unwrap_or(false);
     let range = range_from(query.offset, query.limit);
-    let presences = site::get_presence_on_site(&mut con, &auth_info.subject, &to_logged_as_name(&auth_info), &site_id, range, term).await?;
+    let presences = site::get_presence_on_site(&mut con, &auth_info.subject, &to_logged_as_name(&auth_info), &site_id, range, term, favorites_only).await?;
     Ok(Json(presences))
 }
 
@@ -331,6 +336,18 @@ async fn handle_put_announce(DbCon(mut con): DbCon, _: State<VerishdaState>, aut
         .status(StatusCode::NO_CONTENT)
         .body(Body::empty())?
     )
+}
+
+#[debug_handler]
+async fn handle_put_favorite(DbCon(mut con): DbCon, _: State<VerishdaState>, auth_info: AuthInfo, Path(user_id): Path<String>) -> Result<impl IntoResponse, HandlerError> {
+    site::add_favorite(&mut con, &auth_info.subject, &user_id).await?;
+    Ok(())
+}
+
+#[debug_handler]
+async fn handle_delete_favorite(DbCon(mut con): DbCon, _: State<VerishdaState>, auth_info: AuthInfo, Path(user_id): Path<String>) -> Result<impl IntoResponse, HandlerError> {
+    site::remove_favorite(&mut con, &auth_info.subject, &user_id).await?;
+    Ok(())
 }
 
 #[debug_handler]

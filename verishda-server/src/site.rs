@@ -1,6 +1,6 @@
 use std::{collections::HashMap, ops::Range};
 
-use anyhow::Result;
+use anyhow::{anyhow,Result};
 use chrono::{NaiveDate, NaiveDateTime, NaiveTime, TimeDelta, Utc};
 use sqlx::{Connection, Postgres, PgConnection, postgres::PgRow, Row};
 
@@ -95,26 +95,54 @@ fn pgrow_to_userid_presence(r: &PgRow, self_user_id: &str) -> (String, Presence)
     let presence_user_id: String = r.get::<Option<String>,_>(0).unwrap();
     let is_self = presence_user_id == self_user_id;
     let five_minutes_ago = Utc::now().naive_local().checked_sub_signed(TimeDelta::minutes(5)).unwrap();
+    let is_favorite = r.get::<Option<bool>,_>(3).unwrap();
     let presence = Presence{
+        user_id: presence_user_id.clone(),
         announcements: Vec::new(),
         currently_present: last_seen.filter(|d|five_minutes_ago < *d).is_some(),
         is_self,
-        logged_as_name: r.get::<Option<String>,_>(1).unwrap()
+        logged_as_name: r.get::<Option<String>,_>(1).unwrap(),
+        is_favorite,
     };
 
     (presence_user_id, presence)
 }
 
-fn self_presence_from_name(logged_as_name: &str) -> Presence {
+fn self_presence_from_name(user_id: &str, logged_as_name: &str) -> Presence {
     Presence{
+        user_id: user_id.to_owned(),
         currently_present: false,
+        is_favorite: false,
         logged_as_name: logged_as_name.to_string(),
         announcements: Vec::new(),
         is_self: true,
     }
 }
 
-pub async fn get_presence_on_site(pg: &mut PgConnection, user_id: &str, logged_as_name: &str, site_id: &str, range: Range<i32>, term: Option<&str>) -> Result<Vec<Presence>> {
+pub async fn add_favorite(pg: &mut PgConnection, user_id: &str, favorite_user_id: &str) -> Result<()> {
+    sqlx::query!("
+        INSERT INTO favorite_users (owner_user_id,favorite_user_id) SELECT u.user_id, $2 FROM user_info AS u WHERE u.user_id=$1;
+        ", user_id, favorite_user_id)
+        .execute(pg)
+        .await?
+        ;
+    Ok(())
+}
+
+pub async fn remove_favorite(pg: &mut PgConnection, user_id: &str, favorite_user_id: &str) -> Result<()> {
+    if user_id == favorite_user_id {
+        return Err(anyhow!("cannot add yourself as favorite"));
+    }
+    sqlx::query!("
+        DELETE FROM favorite_users WHERE owner_user_id=$1 AND favorite_user_id=$2;
+        ", user_id, favorite_user_id)
+        .execute(pg)
+        .await?
+        ;
+    Ok(())
+}
+
+pub async fn get_presence_on_site(pg: &mut PgConnection, user_id: &str, logged_as_name: &str, site_id: &str, range: Range<i32>, term: Option<&str>, favorites_only: bool) -> Result<Vec<Presence>> {
 
     let mut tr = pg.begin().await?;
 
@@ -134,7 +162,7 @@ pub async fn get_presence_on_site(pg: &mut PgConnection, user_id: &str, logged_a
     if self_user_at_start && range.start == 0 {
         let row = sqlx::query(
             "
-            SELECT u.user_id, u.logged_as_name, l.last_seen
+            SELECT u.user_id, u.logged_as_name, l.last_seen, FALSE
             FROM user_info AS u
             LEFT JOIN logged_into_site AS l ON l.user_id=u.user_id AND l.site_id=$1
             WHERE u.user_id = $2
@@ -149,7 +177,7 @@ pub async fn get_presence_on_site(pg: &mut PgConnection, user_id: &str, logged_a
         self_user_infos = row
         .map(|row|pgrow_to_userid_presence(&row, user_id))
         .or_else(||{
-            Some((user_id.to_owned(), self_presence_from_name(logged_as_name)))
+            Some((user_id.to_owned(), self_presence_from_name(user_id, logged_as_name)))
         })
         
     } else {
@@ -162,11 +190,13 @@ pub async fn get_presence_on_site(pg: &mut PgConnection, user_id: &str, logged_a
 
     let user_infos = sqlx::query(
         "
-        SELECT u.user_id, u.logged_as_name, l.last_seen
+        SELECT u.user_id, u.logged_as_name, l.last_seen, f.owner_user_id IS NOT NULL
         FROM user_info AS u
         LEFT JOIN logged_into_site AS l ON l.user_id=u.user_id AND l.site_id=$2
+        LEFT JOIN favorite_users AS f ON f.owner_user_id=$5 AND u.user_id=f.favorite_user_id
         WHERE ($1='' OR lower(u.logged_as_name) LIKE concat('%',lower($1),'%')) 
         AND ($6 IS FALSE OR u.user_id <> $5)
+        AND ($7 IS FALSE OR f.owner_user_id IS NOT NULL)
         ORDER BY logged_as_name
         OFFSET $3 LIMIT $4
         "
@@ -177,6 +207,7 @@ pub async fn get_presence_on_site(pg: &mut PgConnection, user_id: &str, logged_a
     .bind(limit as i32)
     .bind(user_id)
     .bind(exclude_user_id)
+    .bind(favorites_only)
     .fetch_all(&mut *tr).await?;
 
     let user_infos = user_infos
@@ -239,81 +270,6 @@ pub async fn get_presence_on_site(pg: &mut PgConnection, user_id: &str, logged_a
     .collect();
     
     return Ok(presences)
-}
-
-pub(super) async fn _get_presence_on_site(pg: &mut PgConnection, user_id: &str, logged_as_name: &str, site_id: &str) -> Result<Vec<Presence>> {
-
-    let stmt = String::new() +
-    "SELECT u.user_id, u.logged_as_name, to_char(a.present_on, 'YYYY-MM-DD'), a.recurring
-    FROM user_announcements AS a JOIN user_info AS u ON a.user_id=u.user_id 
-    WHERE a.site_id=$1
-    
-    UNION
-    
-    SELECT u.user_id, u.logged_as_name, NULL, false
-    FROM logged_into_site AS s JOIN user_info AS u ON s.user_id=u.user_id 
-    WHERE s.site_id=$1 AND u.last_seen >= now() - INTERVAL '10 minutes'";
-
-    let mut presences_map = sqlx::query(&stmt)
-    .bind(&site_id.to_string())
-    .fetch_all(pg).await?
-    .iter()
-    .fold(HashMap::<String,Presence>::new(), |mut m,r|{
-        let user_id: &str = r.get(0);
-        let present_on = if let Some(s) = r.get(2) {
-            let date = NaiveDate::parse_from_str(s, "%Y-%m-%d").unwrap();
-            Some(date)
-        } else {
-            None
-        };
-
-        let recurring = r.get::<bool,usize>(3);
-        if !m.contains_key(user_id) {
-            m.insert(user_id.to_string(), Presence {
-                logged_as_name: r.get(1), 
-                announcements: vec![],
-                currently_present: false,
-                is_self : false,
-            });
-        }
-        let presence = m.get_mut(user_id).unwrap();
-
-        match present_on {
-            // having a presence announcement date means exactly that: an announcement 
-            Some(date) => presence.announcements.push(PresenceAnnouncement { 
-                date,
-                kind: if recurring {
-                    PresenceAnnouncementKind::RecurringAnnouncement
-                } else {
-                    PresenceAnnouncementKind::SingularAnnouncement
-                }
-            }),
-            // having none means that user is currently present
-            None => presence.currently_present = true,
-        }
-
-        m
-    });
-
-    let mut self_presence = match presences_map.remove(user_id) {
-        Some(p) => p,
-        None => Presence{
-            currently_present: false,
-            logged_as_name: logged_as_name.to_string(),
-            announcements: Vec::new(),
-            is_self: false,
-        },
-    };
-    self_presence.is_self = true;
-
-    let presences = std::iter::once(self_presence)
-    .chain(
-        presences_map.values()
-        .map(Presence::clone)
-    )
-    .collect();
-
-    Ok(presences)
 }
 
 
