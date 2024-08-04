@@ -31,6 +31,12 @@ struct Credentials {
     expires_at: Instant,
 }
 
+#[derive(Default)]
+pub struct PersonFilter {
+    pub favorites_only: bool,
+    pub term: Option<String>,
+}
+
 
 pub struct AppCore {
     config: Box<dyn Config>,
@@ -44,8 +50,7 @@ pub struct AppCore {
 
     // filter state
     site: Option<String>,
-    favorites_only: bool,
-    term: Option<String>,
+    filter: PersonFilter,
 }
 
 #[derive(Debug)]
@@ -75,6 +80,7 @@ enum AppCoreCommand {
         user_id: String,
         favorite: bool
     },
+    SetPersonFilter(PersonFilter),
     Quit,
 }
 
@@ -90,7 +96,8 @@ impl AppCore {
             credentials: None,
             on_core_event: None,
             site: None,
-            login_cancel_notify: Arc::new(Notify::new())
+            login_cancel_notify: Arc::new(Notify::new()),
+            filter: PersonFilter::default(),
         };
 
         let app_core = Arc::new(Mutex::new(app_core));
@@ -118,19 +125,23 @@ impl AppCore {
                     }
                     cmd = rx.recv() => {
                         if let Some(cmd) = cmd {
+                            use AppCoreCommand::*;
                             match cmd {
-                                AppCoreCommand::RefreshPrecences => {
+                                RefreshPrecences => {
                                     app_core_clone.lock().await.update_own_presence().await;
                                     app_core_clone.lock().await.refresh_presences().await;
                                 },
-                                AppCoreCommand::PublishAnnouncements{site_id, announcements} => {
+                                PublishAnnouncements{site_id, announcements} => {
                                     app_core_clone.lock().await.publish_own_announcements(site_id, announcements).await;
                                 },
-                                AppCoreCommand::ChangeFavorite{user_id, favorite} => {
+                                ChangeFavorite{user_id, favorite} => {
                                     app_core_clone.lock().await.publish_favorite_change(user_id, favorite).await;
                                 }
-                                AppCoreCommand::Quit => {
+                                Quit => {
                                     break;
+                                }
+                                SetPersonFilter(filter) => {
+                                    app_core_clone.lock().await.set_filter(filter).await;
                                 }
                             }
                         }
@@ -152,6 +163,10 @@ impl AppCore {
         if changed {
             _ = self.command_tx.blocking_send(AppCoreCommand::RefreshPrecences);
         }
+    }
+
+    pub fn filter(&mut self, filter: PersonFilter) {
+        _ = self.command_tx.blocking_send(AppCoreCommand::SetPersonFilter(filter));
     }
 
     pub fn refresh(&self) {
@@ -246,7 +261,11 @@ impl AppCore {
             };
 
             log::trace!("Getting presences for site {site}");
-            match client.handle_get_sites_siteid_presence(site, None, None, None, None).await {
+            let term = self.filter.term.as_ref()
+                .filter(|t|!t.is_empty())
+                .map(|t|t.as_str());
+            let favorites_only = Some(self.filter.favorites_only);
+            match client.handle_get_sites_siteid_presence(site, favorites_only, None, None, term).await {
                 Ok(sites_response) => {
                     let presences = sites_response.into_inner();
                     println!("Got presences: {:?}", presences);
@@ -257,6 +276,11 @@ impl AppCore {
                 }
             }
         }
+    }
+
+    async fn set_filter(&mut self, filter: PersonFilter) {
+        self.filter = filter;
+        self.refresh_presences().await;
     }
 
     async fn publish_favorite_change(&mut self, user_id: String, favorite: bool) {

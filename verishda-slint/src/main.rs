@@ -7,7 +7,7 @@ use verishda_dto::types::{Presence, PresenceAnnouncementKind, Site};
 use std::{collections::HashMap, env, sync::Arc};
 use tokio::sync::Mutex;
 
-use core::Announcement;
+use core::{Announcement, PersonFilter};
 use slint::{Model, ModelRc, VecModel, Weak};
 use tokio::runtime::Handle;
 use verishda_config::{default_config, CompositeConfig, Config, EnvConfig};
@@ -38,7 +38,7 @@ fn main() {
 }
 
 fn ui_main() {
-     let app_core = AppCore::new(Box::new(mk_config()));
+    let app_core = AppCore::new(Box::new(mk_config()));
 
     let main_window = MainWindow::new().unwrap();
     let main_window_weak = main_window.as_weak();
@@ -79,7 +79,18 @@ fn ui_main() {
     app_ui.on_change_favorite_requested(move |user_id, favorite| {
         change_favorite_requested(app_core_clone.clone(), &user_id, favorite)
     });
-
+    let app_core_clone = app_core.clone();
+    app_ui.on_filter_set(move |term, favorites_only| {
+        let term = term.trim();
+        let term = if !term.is_empty() {
+            Some(term.to_owned())
+        } else {
+            None
+        };
+        log::info!("setting filter to {term:?}, {favorites_only}");
+        set_filter(app_core_clone.clone(), term, favorites_only)
+    });
+    
     let app_core_clone = app_core.clone();
     app_ui.on_announcement_change_requested(move |site_id, person, day_index| {
         log::info!("Announcement change requested: {site_id}, {person:?}, {day_index}");
@@ -239,6 +250,11 @@ fn refresh_requested(app_core: Arc<Mutex<AppCore>>) {
 fn change_favorite_requested(app_core: Arc<Mutex<AppCore>>, user_id: &str, favorite: bool) {
     log::info!("favorite state change requested for user {user_id}: {favorite}");
     app_core.blocking_lock().change_favorite(user_id, favorite);
+}
+
+fn set_filter(app_core: Arc<Mutex<AppCore>>, term: Option<String>, favorites_only: bool) {
+    log::info!("favorit only filter set: {favorites_only}");
+    app_core.blocking_lock().filter(PersonFilter{term, favorites_only})
 }
 
 fn announce(app_core: Arc<Mutex<AppCore>>, site_id: String, person: PersonModel) {

@@ -200,6 +200,7 @@ export component SitePresenceView inherits Window {
     callback favorite_change_requested(string, bool);
     callback refresh_requested();
     callback announcement_change_requested(string, PersonModel, int);
+    callback filter_set(string, bool);
 
     out property <string> current_site_id <=> panel.current_site_id;
 
@@ -225,6 +226,10 @@ export component SitePresenceView inherits Window {
                         text: "";
                         vertical-alignment: center;
                         horizontal-stretch: 1;
+
+                        edited => {
+                            filter_set(self.text, favfilter-button.checked);
+                        }
                     }
                     horizontal-stretch: 1;
                 }
@@ -261,6 +266,10 @@ export component SitePresenceView inherits Window {
                 checkable: true;
                 icon: @image-url("icons/search.svg");
                 clicked => {
+                    if !self.checked {
+                        search-text.text = "";
+                        filter_set("", favfilter-button.checked);
+                    }
                     search-text.focus();
                     root.refresh_requested();
                 }
@@ -275,7 +284,10 @@ export component SitePresenceView inherits Window {
                         icon: @image-url("icons/star_hollow.svg");
                     }
                 ]
-                    
+                
+                clicked => {
+                    filter_set(search-text.text, self.checked);
+                }
             }
 
             Button {

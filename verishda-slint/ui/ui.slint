@@ -16,6 +16,7 @@ export global AppUI {
     pure callback site_selected(string);
     pure callback change_favorite_requested(string, bool);
     pure callback refresh_requested();
+    pure callback filter_set(string, bool);
     pure callback announcement_change_requested(string, PersonModel, int);
 
     in property <MainWindowState> state: MainWindowState.ShowingWelcomeView;
@@ -129,6 +130,9 @@ export component MainWindow inherits Window {
             }
             announcement_change_requested(site_id, person, day_index) => {
                 AppUI.announcement_change_requested(site_id, person, day_index);
+            }
+            filter_set(term, favorites-only) => {
+                AppUI.filter_set(term, favorites-only);
             }
             current_day_index: AppUI.current_day_index;
         }
