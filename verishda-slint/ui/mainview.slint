@@ -8,6 +8,7 @@ export enum AnnouncementModel {
 
 export struct PersonModel {
     name: string,
+    user_id: string,
     is_self: bool,
     is_present: bool,
     is_favorite: bool,
@@ -31,19 +32,26 @@ component NameDisplay inherits HorizontalLayout {
 }
 
 component FavStar inherits Image {
-    in property <bool> is_favorite: false;
+    in property <bool> is-favorite: false;
+    in property <bool> is-self: false;
+
+    callback favorite_change_requested();
+
     image-fit: ImageFit.contain;
 
     width: 16px;
     height: 16px;
-    touch:= TouchArea {}
-
+    touch:= TouchArea {
+        clicked => {
+            favorite_change_requested();
+        }
+    }
 
     states [
         is_favorite when self.is_favorite: {
             source: @image-url("icons/star.svg");
         }
-        not_favorite_hover when touch.has-hover && !self.is_favorite: {
+        not_favorite_hover when touch.has-hover && !self.is-favorite && !self.is-self: {
             source: @image-url("icons/star_hollow.svg");
         }
         not_favorite when !touch.has-hover && !self.is_favorite: {
@@ -114,6 +122,7 @@ component PresenceGrid {
     property <[string]> day_names: [@tr("Mo"), @tr("Tu"), @tr("We"), @tr("Th"), @tr("Fr"), @tr("Sa"), @tr("Su")];
 
     callback announcement_change_requested(PersonModel, int);
+    callback favorite_change_requested(PersonModel);
 
     function day_index(day_offset: int) -> int {
         Math.mod(day_offset + current-day-index, 7)
@@ -132,7 +141,12 @@ component PresenceGrid {
                 FavStar {
                     height: 20px;
                     horizontal-alignment: left;
-                    is_favorite: p.is-favorite;
+                    is-favorite: p.is-favorite;
+                    is-self: p.is-self;
+
+                    favorite_change_requested => {
+                        favorite_change_requested(p)
+                    }
                 }
                 n:= NameDisplay {
                     person: p;
@@ -183,6 +197,7 @@ export component SitePresenceView inherits Window {
     out property <string> selected_site_id;
 
     callback site_selected(string);
+    callback favorite_change_requested(string, bool);
     callback refresh_requested();
     callback announcement_change_requested(string, PersonModel, int);
 
@@ -279,6 +294,9 @@ export component SitePresenceView inherits Window {
                 persons: persons;
                 announcement_change_requested(p,n) => {
                     announcement_change_requested(current_site_id, p,n);
+                }
+                favorite_change_requested(p) => {
+                    favorite_change_requested(p.user_id, !p.is-favorite);
                 }
             }
         

@@ -14,6 +14,7 @@ export global AppUI {
     pure callback login_triggered();
     pure callback login_cancelled();
     pure callback site_selected(string);
+    pure callback change_favorite_requested(string, bool);
     pure callback refresh_requested();
     pure callback announcement_change_requested(string, PersonModel, int);
 
@@ -122,6 +123,9 @@ export component MainWindow inherits Window {
             }
             refresh_requested() => {
                 AppUI.refresh_requested();
+            }
+            favorite_change_requested(user_id, favorite) => {
+                AppUI.change_favorite_requested(user_id, favorite);
             }
             announcement_change_requested(site_id, person, day_index) => {
                 AppUI.announcement_change_requested(site_id, person, day_index);

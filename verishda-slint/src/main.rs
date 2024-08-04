@@ -75,6 +75,10 @@ fn ui_main() {
     app_ui.on_refresh_requested(move || {
         refresh_requested(app_core_clone.clone());
     });
+    let app_core_clone = app_core.clone();
+    app_ui.on_change_favorite_requested(move |user_id, favorite| {
+        change_favorite_requested(app_core_clone.clone(), &user_id, favorite)
+    });
 
     let app_core_clone = app_core.clone();
     app_ui.on_announcement_change_requested(move |site_id, person, day_index| {
@@ -232,6 +236,11 @@ fn refresh_requested(app_core: Arc<Mutex<AppCore>>) {
     app_core.blocking_lock().refresh();
 }
 
+fn change_favorite_requested(app_core: Arc<Mutex<AppCore>>, user_id: &str, favorite: bool) {
+    log::info!("favorite state change requested for user {user_id}: {favorite}");
+    app_core.blocking_lock().change_favorite(user_id, favorite);
+}
+
 fn announce(app_core: Arc<Mutex<AppCore>>, site_id: String, person: PersonModel) {
     let person_announcements = person.announcements.clone().iter().collect::<Vec<_>>();
     log::debug!("Announcement made on site {site_id:?} as {person:?} with announcements {person_announcements:?}");
@@ -314,8 +323,9 @@ fn to_person_model(presence: &Presence) -> PersonModel {
 
     PersonModel {
         name: presence.logged_as_name.clone().into(),
+        user_id: presence.user_id.clone().into(),
         is_present: presence.currently_present,
-        is_favorite: false, // TODO! implement this
+        is_favorite: presence.is_favorite,
         announcements: ModelRc::new(VecModel::from(announcements)),
         is_self: presence.is_self,
     }

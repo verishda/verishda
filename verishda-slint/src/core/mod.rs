@@ -40,8 +40,12 @@ pub struct AppCore {
     credentials: Option<Credentials>,
     command_tx: tokio::sync::mpsc::Sender<AppCoreCommand>,
     on_core_event: Option<Box<dyn Fn(CoreEvent) + Send>>,
-    site: Option<String>,
     login_cancel_notify: Arc<Notify>,
+
+    // filter state
+    site: Option<String>,
+    favorites_only: bool,
+    term: Option<String>,
 }
 
 #[derive(Debug)]
@@ -66,6 +70,10 @@ enum AppCoreCommand {
     PublishAnnouncements{
         site_id: String,
         announcements: Vec<Announcement>
+    },
+    ChangeFavorite{
+        user_id: String,
+        favorite: bool
     },
     Quit,
 }
@@ -118,6 +126,9 @@ impl AppCore {
                                 AppCoreCommand::PublishAnnouncements{site_id, announcements} => {
                                     app_core_clone.lock().await.publish_own_announcements(site_id, announcements).await;
                                 },
+                                AppCoreCommand::ChangeFavorite{user_id, favorite} => {
+                                    app_core_clone.lock().await.publish_favorite_change(user_id, favorite).await;
+                                }
                                 AppCoreCommand::Quit => {
                                     break;
                                 }
@@ -145,6 +156,11 @@ impl AppCore {
 
     pub fn refresh(&self) {
         _ = self.command_tx.blocking_send(AppCoreCommand::RefreshPrecences);
+    }
+
+    pub fn change_favorite(&self, user_id: &str, favorite: bool) {
+        let user_id = user_id.to_owned();
+        _ = self.command_tx.blocking_send(AppCoreCommand::ChangeFavorite{user_id, favorite});
     }
 
     pub fn announce(&self, site_id: String, announcements: Vec<Announcement>) {
@@ -241,6 +257,27 @@ impl AppCore {
                 }
             }
         }
+    }
+
+    async fn publish_favorite_change(&mut self, user_id: String, favorite: bool) {
+        let client: verishda_dto::Client = match self.create_client().await {
+            Err(e) => {
+                log::error!("can't create client: {e}");
+                return
+            }
+            Ok(c) => c,
+        };
+        let call_result = if favorite {
+            client.handle_put_favorite(&user_id).await
+        } else {
+            client.handle_delete_favorite(&user_id).await
+        };
+
+        if let Err(e) = call_result {
+            log::error!("call to set favorite status failed: {e}");
+        }
+
+        self.refresh_presences().await;
     }
 
     async fn publish_own_announcements(&mut self, site_id: String, announcements: Vec<Announcement>) {
