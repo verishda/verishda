@@ -7,7 +7,7 @@ build = "build.rs"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-slint = "1.6"
+slint = "1.7"
 anyhow = "1.0"
 tokio = { version = "1.36.0", features = ["full"] }
 openidconnect = "3.5.0"
@@ -30,7 +30,7 @@ verishda-dto = {path="../verishda-dto"}
 verishda-config = {path="../verishda-config"}
 
 [build-dependencies]
-slint-build = "1.5"
+slint-build = "1.7"
 quote = "1.0"
 embed-manifest = "1.4.0"
 embed-resource = "2.4.2"
