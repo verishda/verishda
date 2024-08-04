@@ -120,9 +120,11 @@ fn self_presence_from_name(user_id: &str, logged_as_name: &str) -> Presence {
 }
 
 pub async fn add_favorite(pg: &mut PgConnection, user_id: &str, favorite_user_id: &str) -> Result<()> {
-    sqlx::query!("
+    sqlx::query("
         INSERT INTO favorite_users (owner_user_id,favorite_user_id) SELECT u.user_id, $2 FROM user_info AS u WHERE u.user_id=$1;
-        ", user_id, favorite_user_id)
+        ")
+        .bind(user_id)
+        .bind(favorite_user_id)
         .execute(pg)
         .await?
         ;
@@ -133,9 +135,11 @@ pub async fn remove_favorite(pg: &mut PgConnection, user_id: &str, favorite_user
     if user_id == favorite_user_id {
         return Err(anyhow!("cannot add yourself as favorite"));
     }
-    sqlx::query!("
+    sqlx::query("
         DELETE FROM favorite_users WHERE owner_user_id=$1 AND favorite_user_id=$2;
-        ", user_id, favorite_user_id)
+        ")
+        .bind(user_id)
+        .bind(favorite_user_id)
         .execute(pg)
         .await?
         ;
