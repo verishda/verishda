@@ -1,5 +1,4 @@
 target/
 .spin/
 .env
-Secrets.toml
 Secrets.dev.toml
