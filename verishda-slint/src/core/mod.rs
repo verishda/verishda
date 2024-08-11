@@ -80,6 +80,9 @@ enum AppCoreCommand {
         user_id: String,
         favorite: bool
     },
+    SetSite{
+        site_id: String,
+    },
     SetPersonFilter(PersonFilter),
     Quit,
 }
@@ -143,6 +146,9 @@ impl AppCore {
                                 SetPersonFilter(filter) => {
                                     app_core_clone.lock().await.set_filter(filter).await;
                                 }
+                                SetSite{site_id} => {
+                                    app_core_clone.lock().await.set_site_impl(&site_id).await;
+                                }
                             }
                         }
                    }
@@ -153,6 +159,11 @@ impl AppCore {
     }
 
     pub fn set_site(&mut self, site_id: &str) {
+        let site_id = site_id.to_owned();
+        _ = self.command_tx.blocking_send(AppCoreCommand::SetSite{site_id});
+    }
+
+    async fn set_site_impl(&mut self, site_id: &str) {
         let new_site = if site_id.is_empty() {
            None
         } else {
@@ -161,7 +172,7 @@ impl AppCore {
         let changed = self.site != new_site;
         self.site = new_site;
         if changed {
-            _ = self.command_tx.blocking_send(AppCoreCommand::RefreshPrecences);
+            self.refresh_presences().await;
         }
     }
 
