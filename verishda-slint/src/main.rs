@@ -3,7 +3,6 @@
 use clap::Parser;
 
 use chrono::{Datelike, Days};
-use oslog::OsLogger;
 use verishda_dto::types::{Presence, PresenceAnnouncementKind, Site};
 use std::{collections::HashMap, env, sync::Arc};
 use tokio::sync::Mutex;
@@ -40,7 +39,7 @@ fn main() {
     {
         const SUBSYSTEM: &str = "com.pachler.verishda-slint";
         println!("IMPORTANT: Verishda logging uses os_log. To see log messages, use the 'Console' application and filter by sybsystem '{SUBSYSTEM}'");
-        OsLogger::new(SUBSYSTEM)
+        oslog::OsLogger::new(SUBSYSTEM)
         .level_filter(log::LevelFilter::Debug)
         .category_level_filter("Settings", log::LevelFilter::Trace)
         .init()

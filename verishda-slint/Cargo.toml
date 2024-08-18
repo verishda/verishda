@@ -34,6 +34,8 @@ webbrowser = "1.0.0"
 
 verishda-dto = {path="../verishda-dto"}
 verishda-config = {path="../verishda-config"}
+
+[target.'cfg(target_os = "macos")'.dependencies]
 objc2 = "0.5.2"
 objc2-core-location = {version="0.2.2", features=["CLLocationManager", "CLLocationManagerDelegate", "CLLocation"]}
 oslog = "0.2.0"
