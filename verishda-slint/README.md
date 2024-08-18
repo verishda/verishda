@@ -1,5 +1,11 @@
-# Verishda Slint
+# Verishda client
 
-This is the cross platform client app for Verishda, written using [Slint UI](https://slint.dev). The client aims to be cross platform, however, currently only Windows is working 100% (on MacOS and Linux, location tracking isn't working yet, which prevents Verishda's main feature).
+This client is based on [Slint](https://slint.dev) and currently is the only functional client for the [Verishda server](../verishda-server/README.md).
 
-The app shares the configuration infrastructure with the server, see [the configuration subproject](../verishda-config/README) for details.
+The client is currently focused on Windows and MacOS desktops. (Linux works in theory, but without support for getting the current location)
+
+## Building
+
+On Windows, you may need Visual Studio tooling installed.
+
+On Mac OS, the app will not be able to request authorization for getting the current geolocation fromthe system unless it is delivered and started as an app bundle. Therefore, use [`cargo bundle`](https://github.com/burtonageo/cargo-bundle) to package it. It can be executed also directly using `cargo run`, but geolocation tracking will not work in this case.

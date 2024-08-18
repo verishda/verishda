@@ -3,8 +3,14 @@ name = "verishda-slint"
 version = "0.1.0"
 edition = "2021"
 build = "build.rs"
+description = "Verishda Client"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[package.metadata.bundle]
+name = "Verishda"
+identifier = "name.pachler.verishda"
+icon = ["ui/icons/logo.png"]
 
 [dependencies]
 slint = "1.7"
@@ -28,6 +34,11 @@ webbrowser = "1.0.0"
 
 verishda-dto = {path="../verishda-dto"}
 verishda-config = {path="../verishda-config"}
+objc2 = "0.5.2"
+objc2-core-location = {version="0.2.2", features=["CLLocationManager", "CLLocationManagerDelegate", "CLLocation"]}
+oslog = "0.2.0"
+core-foundation = "0.10.0"
+objc2-foundation = "0.2.2"
 
 [build-dependencies]
 slint-build = "1.7"

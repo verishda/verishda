@@ -1,9 +1,11 @@
-use std::sync::Arc;
+use std::{collections::{HashMap, HashSet}, sync::Arc};
 
 use anyhow::Result;
 use tokio::sync::Mutex;
 #[cfg(target_os = "windows")]
-use windows::Devices::Geolocation::{BasicGeoposition, Geolocator};
+mod windows;
+#[cfg(target_os = "macos")]
+mod macos;
 
 #[derive(Clone, Debug, Default)]
 pub struct Location {
@@ -87,28 +89,28 @@ impl GeoCircle {
     }
 }
 
-#[derive(Debug, Default)]
+#[cfg(target_os="windows")]
+type PollingLocator = windows::WindowsPollingLocator;
+#[cfg(target_os="macos")]
+type PollingLocator = macos::MacOsPollingLocator;
+
+#[derive(Debug)]
 pub(super) struct LocationHandler {
+    polling_locator: PollingLocator,
     shapes: std::collections::HashMap<String, GeoCircle>,
     poll_interval_seconds: u32,
     in_fences: std::collections::HashSet<String>,
 }
 
-#[cfg(target_os = "windows")]
-impl From<&BasicGeoposition> for Location {
-    fn from(pos: &BasicGeoposition) -> Self {
-        Location {
-            latitude: pos.Latitude,
-            longitude: pos.Longitude,
-        }
-    }
-}
-
 impl LocationHandler {
+    
     pub fn new() -> Arc<Mutex<LocationHandler>> {
         let handler = Arc::new(Mutex::new(Self {
+            
+            polling_locator: PollingLocator::new(),
             poll_interval_seconds: 5,
-            ..Self::default()
+            shapes: HashMap::new(),
+            in_fences: HashSet::new(),
         }));
 
         let handler_clone = handler.clone();
@@ -121,34 +123,11 @@ impl LocationHandler {
         handler
     }
 
-    // https://learn.microsoft.com/en-us/previous-versions/windows/apps/dn263199(v=win.10)
-    // https://docs.microsoft.com/en-us/uwp/api/windows.devices.geolocation.geofencing.geofencemonitor
-    #[cfg(windows)]
-    async fn poll_location() -> Location {
-        let loc = Geolocator::new().unwrap();
-        let pos = loc.GetGeopositionAsync().unwrap().await.unwrap();
-        let location = Location::from(
-            &pos.Coordinate()
-                .unwrap()
-                .Point()
-                .unwrap()
-                .Position()
-                .unwrap(),
-        );
-        log::debug!("location: {location:?}");
-        location
-    }
-
-    #[cfg(unix)]
-    async fn poll_location() -> Location {
-        log::warn!("LocationHandler::poll() currently unimplemented on unix!!");
-        Location::default()
-    }
 
     pub async fn poll(handler: Arc<Mutex<Self>>) {
-        let location = Self::poll_location().await;
-
         let mut handler = handler.lock().await;
+        let location = handler.polling_locator.poll_location().await;
+
         handler.check_geofences(&location);
         let sleep_duration = std::time::Duration::from_secs(handler.poll_interval_seconds as u64);
         drop(handler); // dropping handler guard to release lock, avoiding deadlock
