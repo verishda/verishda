@@ -184,8 +184,7 @@ fn ui_main() {
     let app_core_clone = app_core.clone();
     start_fetch_provider_metadata(main_window_weak.clone(), app_core_clone);
 
-    // NOT: will need to change to slint::run_event_loop_until_quit() when we have a systray icon
-    slint::run_event_loop_until_quit().unwrap();
+    slint::run_event_loop().unwrap();
 
     app_core.blocking_lock().quit();
 }
