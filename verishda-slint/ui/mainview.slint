@@ -85,14 +85,27 @@ component PresenceItem inherits PresenceCell{
     TouchArea {
         x: 0;
         width: parent.width;
-        Text {
-            horizontal-alignment: center;
-            text: is-present ? "P" : 
-                announcement == AnnouncementModel.PresenceAnnounced ? "A" : 
-                announcement == AnnouncementModel.RecurringPresenceAnnounced ? "R" :
-                "-"
-            ;
-        }
+        if is-present: 
+            Image {
+                width: 20px;
+                source: @image-url("icons/p-present.svg");
+            }            
+        if !is-present && announcement == AnnouncementModel.PresenceAnnounced: 
+            Image {
+                width: 20px;
+                source: @image-url("icons/p-announced.svg");
+            }    
+        if !is-present && announcement == AnnouncementModel.RecurringPresenceAnnounced: 
+            Image {
+                width: 20px;
+                source: @image-url("icons/p-announced-recurring.svg");
+            }
+/*        if !is-present && announcement == AnnouncementModel.NotAnnounced: 
+            Image {
+                width: 20px;
+                source: @image-url("icons/p-absent.svg");
+            }
+*/
         double-clicked => {
             if read_only {
                 return;
