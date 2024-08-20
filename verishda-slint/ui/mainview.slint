@@ -210,7 +210,7 @@ export component SitePresenceView inherits Window {
         out property <string> current_site_id <=> top_bar.current_site_id;
         
         top_bar := HorizontalLayout {
-
+            spacing: 5px;
             out property <string> current_site_id <=> site_combo.current_site_id;
 
             favfilter_button := Button {

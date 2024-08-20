@@ -1,4 +1,4 @@
-import { CheckBox , TextEdit, VerticalBox, HorizontalBox, Button, LineEdit, ProgressIndicator } from "std-widgets.slint";
+import { CheckBox , TextEdit, VerticalBox, HorizontalBox, Button, LineEdit, ProgressIndicator, StyleMetrics } from "std-widgets.slint";
 
 import { SitePresenceView, SiteModel, PersonModel } from "mainview.slint";
 
@@ -38,46 +38,38 @@ component FetchProviderMetaView {
         }
     }
 }
-component WelcomeView {
+component WelcomeView inherits VerticalBox {
 
+    vertical-stretch: 1;
     callback using-invitation-code-requested(string);
 
     VerticalLayout {
-        Image {
-            source: @image-url("verishda-logo.png");
-            width: 300px;
-        }
-        Text {
-            text: "With Verisha, share with your friends when you're at a favourite place. Let them know when you hang out at your favourite cafe, or make your coworkers aware you're at the office.\n\nPlease choose how to connect to a Verishda network:";
-            wrap: word-wrap;
-        }
-        
-        haveCodeCheckBox := CheckBox {
-            text: "I have an invitation code";
-        }
-        
-        if haveCodeCheckBox.checked : VerticalBox {
-            code-field := LineEdit {
-                placeholder-text: "xxx-xxx-xxx-xxx";
+        vertical-stretch: 1;
+        HorizontalLayout {
+            Image {
+                colorize: StyleMetrics.dark-color-scheme ? white : black;
+                source: @image-url("logo-wide.svg");
+                horizontal-alignment: center;
             }
-            Button {
-                text: "Use Code";
-                clicked => {
-                    using-invitation-code-requested(code-field.text)
-                }
+            
+        }
+
+        VerticalLayout {
+            spacing: 5px;
+            vertical-stretch: 1;
+            alignment: center;
+            Text {
+                text: "Tell your colleagues when you are in the office!";
+                wrap: word-wrap;
             }
-        } 
-       
-        if !haveCodeCheckBox.checked : HorizontalBox {
-           
-            visible: !haveCodeCheckBox.checked;
+            
             Button {
                 text: "Login / Create Account";
                 clicked => {
                     AppUI.login-triggered();
                 }
             }
-        }
+            }
     }
 }
 
@@ -97,6 +89,7 @@ component WaitingForLoginView {
 
 export component MainWindow inherits Window {
     title: "Verishda";
+    vertical-stretch: 1;
 
     if AppUI.state == MainWindowState.Startup: 
         fetch_view := FetchProviderMetaView {}
@@ -105,6 +98,7 @@ export component MainWindow inherits Window {
         welcome_view := WelcomeView {
             y: 0px;
             width: root.width;
+            vertical-stretch: 1;
             using-invitation-code-requested(code) => {
                 AppUI.using-invitation-code-requested(code);
             }
