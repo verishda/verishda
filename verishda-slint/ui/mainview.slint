@@ -213,6 +213,39 @@ export component SitePresenceView inherits Window {
 
             out property <string> current_site_id <=> site_combo.current_site_id;
 
+            favfilter_button := Button {
+                checkable: true;
+                states [
+                    checked when self.checked: {
+                        icon: @image-url("icons/star.svg");
+                    }
+                    unchecked when !self.checked: {
+                        icon: @image-url("icons/star_hollow.svg");
+                    }
+                ]
+                
+                clicked => {
+                    filter_set(search-text.text, self.checked);
+                }
+            }
+            Button {
+                icon: @image-url("icons/reload.svg");
+                clicked => {
+                    root.refresh_requested();
+                }
+            }
+            search_button := Button {
+                checkable: true;
+                icon: @image-url("icons/search.svg");
+                clicked => {
+                    if !self.checked {
+                        search-text.text = "";
+                        filter_set("", favfilter-button.checked);
+                    }
+                    search-text.focus();
+                    root.refresh_requested();
+                }
+            }
             site_search := GridLayout{
                 
                 search_group:= HorizontalLayout {
@@ -262,40 +295,6 @@ export component SitePresenceView inherits Window {
                 }
             ]
             
-            search_button := Button {
-                checkable: true;
-                icon: @image-url("icons/search.svg");
-                clicked => {
-                    if !self.checked {
-                        search-text.text = "";
-                        filter_set("", favfilter-button.checked);
-                    }
-                    search-text.focus();
-                    root.refresh_requested();
-                }
-            }
-            favfilter_button := Button {
-                checkable: true;
-                states [
-                    checked when self.checked: {
-                        icon: @image-url("icons/star.svg");
-                    }
-                    unchecked when !self.checked: {
-                        icon: @image-url("icons/star_hollow.svg");
-                    }
-                ]
-                
-                clicked => {
-                    filter_set(search-text.text, self.checked);
-                }
-            }
-
-            Button {
-                icon: @image-url("icons/reload.svg");
-                clicked => {
-                    root.refresh_requested();
-                }
-            }
         }
 
 
