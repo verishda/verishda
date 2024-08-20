@@ -41,7 +41,6 @@ fn main() {
         println!("IMPORTANT: Verishda logging uses os_log. To see log messages, use the 'Console' application and filter by sybsystem '{SUBSYSTEM}'");
         oslog::OsLogger::new(SUBSYSTEM)
         .level_filter(log::LevelFilter::Debug)
-        .category_level_filter("Settings", log::LevelFilter::Trace)
         .init()
         .unwrap();
     }

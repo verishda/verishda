@@ -1,6 +1,6 @@
-use std::{sync::Arc, thread, time::Duration};
-use objc2_foundation::{NSObject, NSArray, NSObjectProtocol, NSError};
-use core_foundation::runloop::{kCFRunLoopDefaultMode, CFRunLoop};
+use std::{sync::Arc, thread, time::{Duration, Instant}};
+use objc2_foundation::{NSArray, NSError, NSObject, NSObjectProtocol, NSRunLoop};
+use core_foundation::runloop::{kCFRunLoopDefaultMode, CFRunLoop, CFRunLoopRun, CFRunLoopRunResult};
 use objc2::{declare_class, msg_send_id, mutability, rc::Retained, runtime::ProtocolObject, ClassType, DeclaredClass, Message};
 use objc2_core_location::{CLLocation, CLLocationManager, CLLocationManagerDelegate};
 use oslog::OsLogger;
@@ -9,8 +9,8 @@ use tokio::sync::RwLock;
 
 use super::{Location, PollingLocator};
 
-struct LocationDelegateInner {
-
+struct LocationDelegateIvars {
+    current_location: Arc<RwLock<super::Location>>, 
 }
 declare_class!(
     struct LocationDelegate;
@@ -22,7 +22,7 @@ declare_class!(
     }
 
     impl DeclaredClass for LocationDelegate {
-        type Ivars = LocationDelegateInner;
+        type Ivars = LocationDelegateIvars;
     }
 
     unsafe impl NSObjectProtocol for LocationDelegate {}
@@ -34,41 +34,25 @@ declare_class!(
             _manager: &CLLocationManager,
             error: &NSError,
         ) {
-            println!("received error from CLLocationManager {error}")
+            log::error!("received error from CLLocationManager {error}")
         }
 
         #[method(locationManagerDidChangeAuthorization:)]
         unsafe fn locationManagerDidChangeAuthorization(&self, manager: &CLLocationManager) {
-            use objc2_core_location::*;
+            log::info!("locationManagerDidChangeAuthorization: ");
+            handle_authorization_status(manager);
+       }   
 
-            let status = manager.authorizationStatus();
-            log::debug!("locationManagerDidChangeAuthorization: current status is {status:?}");
-
-            match status {
-                CLAuthorizationStatus::kCLAuthorizationStatusNotDetermined => {
-                    manager.requestAlwaysAuthorization();
-                },
-                CLAuthorizationStatus::kCLAuthorizationStatusAuthorized |
-                CLAuthorizationStatus::kCLAuthorizationStatusAuthorizedAlways |
-                CLAuthorizationStatus::kCLAuthorizationStatusAuthorizedWhenInUse => {
-                    manager.startUpdatingLocation();
-                },
-                CLAuthorizationStatus::kCLAuthorizationStatusRestricted |
-                CLAuthorizationStatus::kCLAuthorizationStatusDenied => {
-                    manager.stopUpdatingLocation();
-                }
-                _ => {
-                    log::error!("unknown status {status:?}");
-                }
-            }
-        }   
-             #[method(locationManager:didUpdateLocations:)]
+        #[method(locationManager:didUpdateLocations:)]
         unsafe fn locationManager_didUpdateLocations(
             &self,
-            _manager: &CLLocationManager,
+            manager: &CLLocationManager,
             locations: &NSArray<CLLocation>,
         ) {
-            println!("locations updated: {:?}", DebugNSArray{array:locations});     
+            log::info!("locations updated: {:?}", DebugNSArray{array:locations});     
+            if let Some(loc) = locations.last() {
+                *(self.ivars().current_location.blocking_write()) = Location::from(loc);
+            }
         }
 
     }
@@ -100,8 +84,8 @@ where T: Message + std::fmt::Debug
     }
 }
 
-impl From<Retained<CLLocation>> for Location {
-    fn from(value: Retained<CLLocation>) -> Self {
+impl From<&CLLocation> for Location {
+    fn from(value: &CLLocation) -> Self {
         let coordinate;
         unsafe {
             coordinate = value.coordinate();
@@ -132,26 +116,55 @@ impl MacOsPollingLocator {
     }
 }
 
+unsafe fn handle_authorization_status(manager: &CLLocationManager) {
+    use objc2_core_location::*;
+
+    let status = manager.authorizationStatus();
+    log::info!("current authorization status is {status:?}");
+
+    match status {
+        CLAuthorizationStatus::kCLAuthorizationStatusNotDetermined => {
+            log::info!("requesting authorization");
+            manager.requestAlwaysAuthorization();
+        },
+        CLAuthorizationStatus::kCLAuthorizationStatusAuthorizedAlways |
+        CLAuthorizationStatus::kCLAuthorizationStatusAuthorizedWhenInUse => {
+            log::info!("authorization for reading location data received");
+            manager.startUpdatingLocation();
+        },
+        CLAuthorizationStatus::kCLAuthorizationStatusRestricted |
+        CLAuthorizationStatus::kCLAuthorizationStatusDenied => {
+            log::info!("authorization denied for reading location data");
+            manager.stopUpdatingLocation();
+        }
+        _ => {
+            log::error!("unknown status {status:?}");
+        }
+    }
+
+}
+
 fn run_location_manager_loop(current_location: Arc<RwLock<Location>>) {
     let location_manager;
 
     let delegate = LocationDelegate::new();
     unsafe {
         location_manager = CLLocationManager::new();
-        log::info!("auth status: {:?}", location_manager.authorizationStatus());
         location_manager.setDistanceFilter(100.);
         location_manager.setDesiredAccuracy(50.);
         location_manager.setDelegate(Some(ProtocolObject::from_ref(&*delegate)));
-        location_manager.requestAlwaysAuthorization();
         
         loop {
-            CFRunLoop::run_in_mode(kCFRunLoopDefaultMode, Duration::from_secs(10), false);
-            let loc = location_manager.location();
-            log::info!("location: {loc:?}");
-            if let Some(loc) = loc {
-                *(current_location.blocking_write()) = Location::from(loc);
-            }            
+            const ONE_SECOND: Duration = Duration::from_secs(1);
+            let res = CFRunLoop::run_in_mode(kCFRunLoopDefaultMode, ONE_SECOND, false);
+            log::info!("run loop finished with {res:?}");
+            if res == CFRunLoopRunResult::Finished {
+                std::thread::sleep(ONE_SECOND);
+                location_manager.requestLocation();
+            }
         }
+
+        log::info!("location manager thread terminated regularly.")
     }
 }
 
