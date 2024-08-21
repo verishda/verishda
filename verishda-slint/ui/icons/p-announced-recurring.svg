@@ -24,13 +24,13 @@
      inkscape:deskcolor="#505050"
      inkscape:document-units="mm"
      showguides="true"
-     inkscape:zoom="0.49226105"
-     inkscape:cx="-454.02739"
-     inkscape:cy="-94.462075"
+     inkscape:zoom="5.1908632"
+     inkscape:cx="21.287404"
+     inkscape:cy="4.3345392"
      inkscape:window-width="1264"
      inkscape:window-height="706"
-     inkscape:window-x="2003"
-     inkscape:window-y="106"
+     inkscape:window-x="2277"
+     inkscape:window-y="120"
      inkscape:window-maximized="0"
      inkscape:current-layer="layer1"
      showgrid="false">
@@ -52,11 +52,17 @@
      inkscape:groupmode="layer"
      id="layer1">
     <circle
-       style="fill:#ffffff;fill-opacity:1;stroke-width:0.264583"
-       id="path1"
-       cx="6.3830729"
-       cy="6.316927"
-       r="6.1515622" />
+       style="fill:#ffffff;fill-opacity:1;stroke:none;stroke-width:1.49052;stroke-linecap:round;stroke-linejoin:round;stroke-opacity:1;paint-order:markers fill stroke"
+       id="circle10"
+       cx="3.6354082"
+       cy="6.3385482"
+       r="3.5962095" />
+    <circle
+       style="fill:#ffffff;fill-opacity:1;stroke:none;stroke-width:1.49052;stroke-linecap:round;stroke-linejoin:round;stroke-opacity:1;paint-order:markers fill stroke"
+       id="circle8"
+       cx="9.0784369"
+       cy="6.3385482"
+       r="3.5962095" />
     <ellipse
        style="fill:#3df772;fill-opacity:0;stroke-width:0.264583"
        id="path2"
@@ -64,19 +70,17 @@
        cy="0.36380208"
        rx="7.5902343"
        ry="0.33072916" />
-    <path
-       id="path1-5"
-       style="fill:#ffc933;fill-opacity:1;stroke:#000000;stroke-width:1.03066;stroke-dasharray:none;stroke-opacity:1"
-       d="M 6.3463826 1.3192993 A 5.0448298 5.0448298 0 0 0 1.3017293 6.3639526 A 5.0448298 5.0448298 0 0 0 6.3463826 11.409123 A 5.0448298 5.0448298 0 0 0 11.391553 6.3639526 A 5.0448298 5.0448298 0 0 0 6.3463826 1.3192993 z M 6.3463826 4.5511434 A 1.8132213 1.8132213 0 0 1 8.1597087 6.3639526 A 1.8132213 1.8132213 0 0 1 6.3463826 8.1772786 A 1.8132213 1.8132213 0 0 1 4.5335734 6.3639526 A 1.8132213 1.8132213 0 0 1 6.3463826 4.5511434 z " />
-    <path
-       style="fill:none;stroke:#000000;stroke-width:1;stroke-linecap:butt;stroke-linejoin:miter;stroke-dasharray:none;stroke-opacity:1"
-       d="M 5.5260506,1.4219077 7.1741709,3.1023441 5.3644701,4.8474127"
-       id="path3"
-       sodipodi:nodetypes="ccc" />
-    <path
-       style="fill:none;stroke:#000000;stroke-width:1;stroke-linecap:butt;stroke-linejoin:miter;stroke-dasharray:none;stroke-opacity:1"
-       d="M 7.3043221,7.8346291 5.6562018,9.5150655 7.4659026,11.260134"
-       id="path4"
-       sodipodi:nodetypes="ccc" />
+    <circle
+       style="fill:#ffc933;fill-opacity:1;stroke:#000000;stroke-width:1;stroke-linecap:round;stroke-linejoin:round;stroke-opacity:1;paint-order:markers fill stroke"
+       id="circle6"
+       cy="6.2976542"
+       cx="9.0754356"
+       r="2.6989949" />
+    <circle
+       style="fill:#ffc933;fill-opacity:1;stroke:#000000;stroke-width:1;stroke-linecap:round;stroke-linejoin:round;stroke-opacity:1;paint-order:markers fill stroke"
+       id="circle9"
+       cy="6.2976542"
+       cx="3.6146047"
+       r="2.6989949" />
   </g>
 </svg>
