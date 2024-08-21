@@ -60,9 +60,6 @@ fn ui_main() {
     let main_window_weak = main_window.as_weak();
     let app_core_clone = app_core.clone();
     let app_ui = main_window.global::<AppUI>();
-    app_ui.on_using_invitation_code_requested(move |code| {
-        log::info!("requsted using code {code}");
-    });
     app_ui.on_login_triggered(move || {
         start_login(app_core_clone.clone(), main_window_weak.clone());
     });

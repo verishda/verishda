@@ -1,4 +1,4 @@
-import { CheckBox , TextEdit, VerticalBox, HorizontalBox, Button, LineEdit, ProgressIndicator, StyleMetrics } from "std-widgets.slint";
+import { CheckBox , TextEdit, VerticalBox, HorizontalBox, Button, LineEdit, ProgressIndicator, StyleMetrics, Palette } from "std-widgets.slint";
 
 import { SitePresenceView, SiteModel, PersonModel } from "mainview.slint";
 
@@ -10,7 +10,6 @@ enum MainWindowState {
 }
 
 export global AppUI {
-    pure callback using-invitation-code-requested(string);
     pure callback login_triggered();
     pure callback login_cancelled();
     pure callback site_selected(string);
@@ -41,13 +40,12 @@ component FetchProviderMetaView {
 component WelcomeView inherits VerticalBox {
 
     vertical-stretch: 1;
-    callback using-invitation-code-requested(string);
 
     VerticalLayout {
         vertical-stretch: 1;
         HorizontalLayout {
             Image {
-                colorize: StyleMetrics.dark-color-scheme ? white : black;
+                colorize: Palette.color-scheme == ColorScheme.dark ? white : black;
                 source: @image-url("logo-wide.svg");
                 horizontal-alignment: center;
             }
@@ -99,9 +97,6 @@ export component MainWindow inherits Window {
             y: 0px;
             width: root.width;
             vertical-stretch: 1;
-            using-invitation-code-requested(code) => {
-                AppUI.using-invitation-code-requested(code);
-            }
         }
     
     if AppUI.state == MainWindowState.ShowingWaitingForLoginView:

@@ -82,30 +82,30 @@ component PresenceItem inherits PresenceCell{
 
     callback announcement_change_requested(PersonModel, int);
 
-    TouchArea {
+    touch := TouchArea {
         x: 0;
         width: parent.width;
-        if is-present: 
-            Image {
-                width: 20px;
-                source: @image-url("icons/p-present.svg");
-            }            
-        if !is-present && announcement == AnnouncementModel.PresenceAnnounced: 
-            Image {
-                width: 20px;
-                source: @image-url("icons/p-announced.svg");
-            }    
-        if !is-present && announcement == AnnouncementModel.RecurringPresenceAnnounced: 
-            Image {
-                width: 20px;
-                source: @image-url("icons/p-announced-recurring.svg");
-            }
-/*        if !is-present && announcement == AnnouncementModel.NotAnnounced: 
-            Image {
-                width: 20px;
-                source: @image-url("icons/p-absent.svg");
-            }
-*/
+        Image {
+            width: 20px;
+            states[
+                present when is_present: {
+                    source: @image-url("icons/p-present.svg");
+                }
+                announced when !is-present && announcement == AnnouncementModel.PresenceAnnounced: {
+                    source: @image-url("icons/p-announced.svg");
+                }
+                announced-recurring when !is-present && announcement == AnnouncementModel.RecurringPresenceAnnounced: {
+                    source: @image-url("icons/p-announced-recurring.svg");
+                }
+                absent when !is-present && announcement == AnnouncementModel.NotAnnounced && !(touch.has-hover && person.is-self): {
+                    source: @image-url("icons/p-absent.svg");
+                }
+                absent-hover when !is-present && announcement == AnnouncementModel.NotAnnounced && (touch.has-hover && person.is-self): {
+                    source: @image-url("icons/p-absent-hover.svg");
+                }
+            ]
+        }            
+
         double-clicked => {
             if read_only {
                 return;

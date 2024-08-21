@@ -8,7 +8,7 @@
    version="1.1"
    id="svg1"
    inkscape:version="1.3.2 (091e20e, 2023-11-25)"
-   sodipodi:docname="p-absent.svg"
+   sodipodi:docname="p-absent-hover.svg"
    xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
    xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd"
    xmlns="http://www.w3.org/2000/svg"
@@ -24,13 +24,13 @@
      inkscape:deskcolor="#505050"
      inkscape:document-units="mm"
      showguides="true"
-     inkscape:zoom="8"
-     inkscape:cx="13.125"
-     inkscape:cy="28.9375"
-     inkscape:window-width="744"
-     inkscape:window-height="674"
-     inkscape:window-x="738"
-     inkscape:window-y="277"
+     inkscape:zoom="6.9864717"
+     inkscape:cx="41.007824"
+     inkscape:cy="33.207034"
+     inkscape:window-width="1360"
+     inkscape:window-height="807"
+     inkscape:window-x="1991"
+     inkscape:window-y="75"
      inkscape:window-maximized="0"
      inkscape:current-layer="layer1"
      showgrid="false">
@@ -51,12 +51,10 @@
      inkscape:label="Ebene 1"
      inkscape:groupmode="layer"
      id="layer1">
-    <circle
-       style="fill:#ffffff;fill-opacity:1;stroke-width:0.0647235"
+    <path
        id="path1"
-       cx="6.442656"
-       cy="6.3870854"
-       r="1.5048175" />
+       style="fill:#ffffff;fill-opacity:1;stroke-width:0.264583"
+       d="M 6.3830729 0.16536458 A 6.1515622 6.1515622 0 0 0 0.23151042 6.3169271 A 6.1515622 6.1515622 0 0 0 6.3830729 12.46849 A 6.1515622 6.1515622 0 0 0 12.534635 6.3169271 A 6.1515622 6.1515622 0 0 0 6.3830729 0.16536458 z M 6.3830729 2.2603271 A 4.1095014 4.0567594 0 0 1 10.492383 6.3169271 A 4.1095014 4.0567594 0 0 1 6.3830729 10.373527 A 4.1095014 4.0567594 0 0 1 2.273763 6.3169271 A 4.1095014 4.0567594 0 0 1 6.3830729 2.2603271 z " />
     <ellipse
        style="fill:#3df772;fill-opacity:0;stroke-width:0.264583"
        id="path2"
@@ -64,11 +62,12 @@
        cy="0.36380208"
        rx="7.5902343"
        ry="0.33072916" />
-    <circle
-       style="fill:#000000;fill-opacity:1;stroke-width:0.0440971"
+    <ellipse
+       style="fill:none;fill-opacity:1;stroke:#000000;stroke-width:1.04903;stroke-dasharray:none;stroke-opacity:1"
        id="path1-5"
-       cx="6.4261193"
-       cy="6.3870854"
-       r="1.0252604" />
+       cx="6.3830729"
+       cy="6.316927"
+       rx="5.1679354"
+       ry="5.1017895" />
   </g>
 </svg>
