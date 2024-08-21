@@ -137,7 +137,7 @@ impl LocationHandler {
     }
 
     fn check_geofences(&mut self, location: &Location) {
-        log::debug!("polling geofences");
+        log::debug!("polling geofences against {location:?}");
         log::trace!("installed geofences: {:?}", self.shapes);
         for (id, shape) in &self.shapes {
             if shape.is_inside(&location) {
