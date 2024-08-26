@@ -163,19 +163,6 @@ impl AppCore {
         _ = self.command_tx.blocking_send(AppCoreCommand::SetSite{site_id});
     }
 
-    async fn set_site_impl(&mut self, site_id: &str) {
-        let new_site = if site_id.is_empty() {
-           None
-        } else {
-           Some(site_id.to_string())
-        };
-        let changed = self.site != new_site;
-        self.site = new_site;
-        if changed {
-            self.refresh_presences().await;
-        }
-    }
-
     pub fn filter(&mut self, filter: PersonFilter) {
         _ = self.command_tx.blocking_send(AppCoreCommand::SetPersonFilter(filter));
     }
@@ -198,6 +185,19 @@ impl AppCore {
 
     pub fn quit(&mut self) {
        self.command_tx.blocking_send(AppCoreCommand::Quit).unwrap();
+    }
+
+    async fn set_site_impl(&mut self, site_id: &str) {
+        let new_site = if site_id.is_empty() {
+           None
+        } else {
+           Some(site_id.to_string())
+        };
+        let changed = self.site != new_site;
+        self.site = new_site;
+        if changed {
+            self.refresh_presences().await;
+        }
     }
 
     async fn create_client(&mut self) -> Result<verishda_dto::Client> {
