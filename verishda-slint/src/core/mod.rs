@@ -2,7 +2,7 @@ use std::{sync::Arc, time::{Duration, Instant}};
 
 use chrono::Days;
 use futures::prelude::*;
-use openidconnect::{core::{CoreAuthenticationFlow, CoreClient, CoreProviderMetadata}, reqwest::async_http_client, AuthorizationCode, ClientId, CsrfToken, IssuerUrl, Nonce, OAuth2TokenResponse, PkceCodeChallenge, PkceCodeVerifier, RedirectUrl, RefreshToken};
+use openidconnect::{core::{CoreAuthenticationFlow, CoreClient, CoreProviderMetadata}, reqwest::async_http_client, AuthorizationCode, ClientId, CsrfToken, IssuerUrl, Nonce, OAuth2TokenResponse, PkceCodeChallenge, PkceCodeVerifier, RedirectUrl, RefreshToken, Scope};
 use anyhow::Result;
 
 use reqwest::header::HeaderMap;
@@ -204,11 +204,20 @@ impl AppCore {
         if let Some(credentials) = &mut self.credentials {
             if Instant::now().cmp(&credentials.expires_at) == std::cmp::Ordering::Greater{
                 let refresh_token = RefreshToken::new(credentials.refresh_token.clone());
-                let resp = self.oidc_client.as_ref().unwrap().exchange_refresh_token(&refresh_token)
+                match self.oidc_client.as_ref().unwrap().exchange_refresh_token(&refresh_token)
                     .request_async(async_http_client)
-                    .await?;
-                credentials.access_token = resp.access_token().secret().to_string();
-                credentials.expires_at = Self::expires_at_from_now(resp.expires_in());
+                    .await 
+                {
+                    Ok(resp) => {
+                        credentials.access_token = resp.access_token().secret().to_string();
+                        credentials.expires_at = Self::expires_at_from_now(resp.expires_in());
+                    }
+                    Err(e) => {
+                        self.credentials = None;
+                        self.broadcast_core_event(CoreEvent::LoggedOut);
+                        return Err(anyhow::anyhow!(e));
+                    }
+                }
             }
 
             let mut headers = HeaderMap::new();
@@ -243,7 +252,7 @@ impl AppCore {
                     self.broadcast_core_event(CoreEvent::SitesUpdated(sites));
                 }
                 Err(e) => {
-                    println!("Failed to get sites: {}", e);
+                    log::error!("Failed to get sites: {}", e);
                 }
             }
         }
@@ -279,11 +288,11 @@ impl AppCore {
             match client.handle_get_sites_siteid_presence(site, favorites_only, None, None, term).await {
                 Ok(sites_response) => {
                     let presences = sites_response.into_inner();
-                    println!("Got presences: {:?}", presences);
+                    log::debug!("Got presences: {:?}", presences);
                     self.broadcast_core_event(CoreEvent::PresencesChanged(presences));
                 }
                 Err(e) => {
-                    println!("Failed to get sites: {}", e);
+                    log::error!("Failed to get sites: {}", e);
                 }
             }
         }
@@ -484,6 +493,7 @@ impl AppCore {
             )
             // Set the PKCE code challenge.
             .set_pkce_challenge(pkce_challenge)
+            .add_scope(Scope::new("offline_access".into()))
             .url();
 
         (auth_url, pkce_verifier, csrf_token)
