@@ -15,7 +15,7 @@ icon = ["ui/icons/logo.png"]
 [dependencies]
 slint = "1.7"
 anyhow = "1.0"
-tokio = { version = "1.36.0", features = ["full"] }
+tokio = { version = "1.36.0", features = ["full", "tracing"] }
 openidconnect = "3.5.0"
 url = "2.5.0"
 serde = {version="1.0.197", features=["derive"]}
@@ -34,6 +34,7 @@ webbrowser = "1.0.0"
 
 verishda-dto = {path="../verishda-dto"}
 verishda-config = {path="../verishda-config"}
+console-subscriber = "0.4.0"
 
 [target.'cfg(target_os = "macos")'.dependencies]
 objc2 = "0.5.2"

@@ -1,13 +1,12 @@
-use std::{sync::Arc, thread::{self, current}, time::{Duration, Instant}};
-use objc2_foundation::{NSArray, NSError, NSObject, NSObjectProtocol, NSRunLoop};
-use core_foundation::runloop::{kCFRunLoopDefaultMode, CFRunLoop, CFRunLoopRun, CFRunLoopRunResult, CFRunLoopTimerCallBack};
+use std::{sync::Arc, thread::{self}, time::Duration};
+use objc2_foundation::{NSArray, NSError, NSObject, NSObjectProtocol};
+use core_foundation::runloop::{kCFRunLoopDefaultMode, CFRunLoop, CFRunLoopRunResult};
 use objc2::{declare_class, msg_send_id, mutability, rc::Retained, runtime::ProtocolObject, ClassType, DeclaredClass, Message};
 use objc2_core_location::{CLLocation, CLLocationManager, CLLocationManagerDelegate};
-use oslog::OsLogger;
 use tokio::sync::RwLock;
 
 
-use super::{Location, PollingLocator};
+use super::Location;
 
 struct LocationDelegateIvars {
     current_location: Arc<RwLock<super::Location>>, 

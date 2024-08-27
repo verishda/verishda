@@ -6,7 +6,7 @@ use openidconnect::{core::{CoreAuthenticationFlow, CoreClient, CoreProviderMetad
 use anyhow::Result;
 
 use reqwest::header::HeaderMap;
-use tokio::sync::{Mutex, Notify};
+use tokio::sync::{mpsc::Sender, Mutex, Notify};
 use url::Url;
 use log::*;
 
@@ -44,8 +44,9 @@ pub struct AppCore {
     oidc_metadata: Option<CoreProviderMetadata>,
     oidc_client: Option<CoreClient>,
     credentials: Option<Credentials>,
-    command_tx: tokio::sync::mpsc::Sender<AppCoreCommand>,
-    on_core_event: Option<Box<dyn Fn(CoreEvent) + Send>>,
+    core_event_tx: Sender<CoreEvent>,
+    core_cmd_tx: Sender<AppCoreCommand>,
+    on_core_event: Arc<Mutex<Vec<Box<dyn Fn(CoreEvent) + Send>>>>,
     login_cancel_notify: Arc<Notify>,
 
     // filter state
@@ -53,8 +54,17 @@ pub struct AppCore {
     filter: PersonFilter,
 }
 
-#[derive(Debug)]
-pub enum CoreEvent {
+#[derive(Clone)]
+pub struct AppCoreRef {
+    command_tx: tokio::sync::mpsc::Sender<AppCoreCommand>,
+}
+
+#[derive(Debug, Clone)]
+pub enum CoreEvent 
+where Self: Send + Sync
+{
+    InitializationFinished,
+    InitializationFailed,
     LoggingIn,
     LogginSuccessful,
     LoggedOut,
@@ -71,6 +81,11 @@ enum LoginPipeMessage {
 }
 
 enum AppCoreCommand {
+    AddCoreEventListener(Box<dyn Fn(CoreEvent) + Send>),
+    StartLogin,
+    CancelLogin,
+    ExchangeCodeForToken(String, PkceCodeVerifier),
+    Logout,
     RefreshPrecences,
     PublishAnnouncements{
         site_id: String,
@@ -88,29 +103,54 @@ enum AppCoreCommand {
 }
 
 impl AppCore {
-    pub fn new(config: Box<dyn Config>) -> Arc<Mutex<Self>> {
-        let (tx, mut rx) = tokio::sync::mpsc::channel::<AppCoreCommand>(1);
-        let app_core = Self {
+    pub fn new(config: Box<dyn Config>) -> AppCoreRef {
+        let (tx, mut rx) = tokio::sync::mpsc::channel::<AppCoreCommand>(10);
+        let (event_tx, mut event_rx) = tokio::sync::mpsc::channel::<CoreEvent>(10);
+        let core_ref = AppCoreRef {command_tx: tx.clone()};
+        let mut app_core = Self {
             config,
             location_handler: location::LocationHandler::new(),
-            command_tx: tx,
             oidc_metadata: None,
             oidc_client: None,
             credentials: None,
-            on_core_event: None,
+            core_event_tx: event_tx.clone(),
+            core_cmd_tx: tx,
+            on_core_event: Arc::new(Mutex::new(vec![])),
             site: None,
             login_cancel_notify: Arc::new(Notify::new()),
             filter: PersonFilter::default(),
         };
 
-        let app_core = Arc::new(Mutex::new(app_core));
-        let app_core_clone = app_core.clone();
+        let listeners = app_core.on_core_event.clone();
+
+        tokio::spawn(async move {
+            loop {
+                let event = if let Some(event) = event_rx.recv().await {
+                    event
+                } else {
+                    break;
+                };
+                let guard = listeners.lock().await;
+                for listener in guard.iter() {
+                    listener(event.clone());
+                }
+            }
+            log::info!("core event dispatcher loop terminated.");
+        });
+
         tokio::spawn(async move {
 
             log::info!("AppCore background task started");
+            match app_core.init().await {
+                Ok(_) => app_core.broadcast_core_event(CoreEvent::InitializationFinished).await,
+                Err(e) => {
+                    log::error!("initialization failed: {e}");
+                    app_core.broadcast_core_event(CoreEvent::InitializationFailed).await
+                },
+            }
 
             // start with refreshing presences
-            app_core_clone.lock().await.refresh_sites().await;
+            app_core.refresh_sites().await;
 
             // install interval timer
             let mut site_refresh_ival = tokio::time::interval(Duration::from_secs(5*60));
@@ -120,34 +160,52 @@ impl AppCore {
             loop {
                 tokio::select! {
                     _ = site_refresh_ival.tick() => {
-                        app_core_clone.lock().await.refresh_sites().await;
+                        app_core.refresh_sites().await;
                     }
                     _ = presence_refresh_ival.tick() => {
-                        app_core_clone.lock().await.update_own_presence().await;
-                        app_core_clone.lock().await.refresh_presences().await;
+                        app_core.update_own_presence().await;
+                        app_core.refresh_presences().await;
                     }
                     cmd = rx.recv() => {
                         if let Some(cmd) = cmd {
                             use AppCoreCommand::*;
                             match cmd {
+                                AddCoreEventListener(listener) => {
+                                    app_core.add_core_event_listener(listener).await;
+                                }
+                                StartLogin => {
+                                    AppCore::start_login(&mut app_core).await.unwrap();
+                                }
+                                CancelLogin => {
+                                    app_core.login_cancel_notify.notify_waiters();
+                                }
+                                ExchangeCodeForToken(code, pkce_verifier) => {
+                                    if let Ok(()) = Self::exchange_code_for_tokens(&mut app_core, code, pkce_verifier).await {
+                                        event_tx.send(CoreEvent::LogginSuccessful).await.unwrap();
+                                    }
+                                }
+                                Logout => {
+                                    app_core.credentials = None;
+                                    app_core.core_event_tx.send(CoreEvent::LoggedOut).await.unwrap();
+                                }
                                 RefreshPrecences => {
-                                    app_core_clone.lock().await.update_own_presence().await;
-                                    app_core_clone.lock().await.refresh_presences().await;
+                                    app_core.update_own_presence().await;
+                                    app_core.refresh_presences().await;
                                 },
                                 PublishAnnouncements{site_id, announcements} => {
-                                    app_core_clone.lock().await.publish_own_announcements(site_id, announcements).await;
+                                    app_core.publish_own_announcements(site_id, announcements).await;
                                 },
                                 ChangeFavorite{user_id, favorite} => {
-                                    app_core_clone.lock().await.publish_favorite_change(user_id, favorite).await;
+                                    app_core.publish_favorite_change(user_id, favorite).await;
                                 }
                                 Quit => {
                                     break;
                                 }
                                 SetPersonFilter(filter) => {
-                                    app_core_clone.lock().await.set_filter(filter).await;
+                                    app_core.set_filter(filter).await;
                                 }
                                 SetSite{site_id} => {
-                                    app_core_clone.lock().await.set_site_impl(&site_id).await;
+                                    app_core.set_site_impl(&site_id).await;
                                 }
                             }
                         }
@@ -155,15 +213,24 @@ impl AppCore {
                 }
             }
         });
-        app_core
+
+
+        core_ref
+    }
+}
+
+impl AppCoreRef {
+
+    pub fn start_login(&self) {
+        _ = self.command_tx.blocking_send(AppCoreCommand::StartLogin);
     }
 
-    pub fn set_site(&mut self, site_id: &str) {
+    pub fn set_site(&self, site_id: &str) {
         let site_id = site_id.to_owned();
         _ = self.command_tx.blocking_send(AppCoreCommand::SetSite{site_id});
     }
 
-    pub fn filter(&mut self, filter: PersonFilter) {
+    pub fn filter(&self, filter: PersonFilter) {
         _ = self.command_tx.blocking_send(AppCoreCommand::SetPersonFilter(filter));
     }
 
@@ -183,9 +250,24 @@ impl AppCore {
         });
     }
 
-    pub fn quit(&mut self) {
+    pub fn quit(&self) {
        self.command_tx.blocking_send(AppCoreCommand::Quit).unwrap();
     }
+
+    pub fn cancel_login(&self) {
+        self.command_tx.blocking_send(AppCoreCommand::CancelLogin).unwrap();
+    }
+
+    pub fn on_core_event<F>(&self, f: F)
+    where F: Fn(CoreEvent) + Send + 'static
+    {
+        self.command_tx.blocking_send(AppCoreCommand::AddCoreEventListener(Box::new(f))).unwrap();
+    }
+
+
+}
+
+impl AppCore {
 
     async fn set_site_impl(&mut self, site_id: &str) {
         let new_site = if site_id.is_empty() {
@@ -214,7 +296,7 @@ impl AppCore {
                     }
                     Err(e) => {
                         self.credentials = None;
-                        self.broadcast_core_event(CoreEvent::LoggedOut);
+                        self.broadcast_core_event(CoreEvent::LoggedOut).await;
                         return Err(anyhow::anyhow!(e));
                     }
                 }
@@ -249,7 +331,7 @@ impl AppCore {
                         let location = Location::new(site.latitude as f64, site.longitude as f64);
                         let _ = location_handler.add_geofence_circle(&site.id, &location, 100.);
                     }
-                    self.broadcast_core_event(CoreEvent::SitesUpdated(sites));
+                    self.broadcast_core_event(CoreEvent::SitesUpdated(sites)).await;
                 }
                 Err(e) => {
                     log::error!("Failed to get sites: {}", e);
@@ -270,30 +352,36 @@ impl AppCore {
     }
 
     async fn refresh_presences(&mut self) {
-        if let Ok(client) = self.create_client().await {
 
-            log::trace!("Refreshing presences");
-            let site = if let Some(site) = &self.site {
-                site
-            } else {
-                log::trace!("No site selected, aborting presence refresh");
+        let client = match self.create_client().await {
+            Ok(client) => client,
+            Err(error) => {
+                log::error!("failed to create client: {error}");
                 return;
-            };
+            }
+        };
 
-            log::trace!("Getting presences for site {site}");
-            let term = self.filter.term.as_ref()
-                .filter(|t|!t.is_empty())
-                .map(|t|t.as_str());
-            let favorites_only = Some(self.filter.favorites_only);
-            match client.handle_get_sites_siteid_presence(site, favorites_only, None, None, term).await {
-                Ok(sites_response) => {
-                    let presences = sites_response.into_inner();
-                    log::debug!("Got presences: {:?}", presences);
-                    self.broadcast_core_event(CoreEvent::PresencesChanged(presences));
-                }
-                Err(e) => {
-                    log::error!("Failed to get sites: {}", e);
-                }
+        log::trace!("Refreshing presences");
+        let site = if let Some(site) = &self.site {
+            site
+        } else {
+            log::trace!("No site selected, aborting presence refresh");
+            return;
+        };
+
+        log::trace!("Getting presences for site {site}");
+        let term = self.filter.term.as_ref()
+            .filter(|t|!t.is_empty())
+            .map(|t|t.as_str());
+        let favorites_only = Some(self.filter.favorites_only);
+        match client.handle_get_sites_siteid_presence(site, favorites_only, None, None, term).await {
+            Ok(sites_response) => {
+                let presences = sites_response.into_inner();
+                log::debug!("Got presences: {:?}", presences);
+                self.broadcast_core_event(CoreEvent::PresencesChanged(presences)).await;
+            }
+            Err(e) => {
+                log::error!("Failed to get sites: {}", e);
             }
         }
     }
@@ -358,17 +446,14 @@ impl AppCore {
         }
     }
 
-    pub fn on_core_event<F>(&mut self, f: F)
-    where F: Fn(CoreEvent) + Send + 'static
-    {
-        self.on_core_event = Some(Box::new(f));
+    async fn add_core_event_listener(&mut self, listener: Box<dyn Fn(CoreEvent) + Send>) {
+        self.on_core_event.lock().await.push(listener);
     }
 
-    fn broadcast_core_event(&self, event: CoreEvent) {
-        if let Some(on_core_event) = &self.on_core_event {
-            on_core_event(event);
-        }
+    async fn broadcast_core_event(&self, event: CoreEvent) {
+        self.core_event_tx.send(event).await.unwrap();
     }
+
     fn api_base_url(&self) -> String{
         self.config.get("API_BASE_URL").unwrap()
     }
@@ -377,15 +462,14 @@ impl AppCore {
         self.api_base_url() + "/api/public/oidc/login-target"
     }
 
-    pub fn start_login(app_core: Arc<Mutex<AppCore>>) -> Result<()> 
+    async fn start_login(app_core: &mut AppCore) -> Result<()> 
     {
         let shutdown_notify;
         {
-            let app_core = app_core.blocking_lock();
-            app_core.broadcast_core_event(CoreEvent::LoggingIn);
+            app_core.broadcast_core_event(CoreEvent::LoggingIn).await;
             shutdown_notify = app_core.login_cancel_notify.clone();
         }
-        let url = Self::start_login_websocket(app_core.clone(), shutdown_notify.clone())?;
+        let url = Self::start_login_websocket(app_core, shutdown_notify.clone())?;
 
         if let Err(e) = webbrowser::open(&url.to_string()) {
             log::error!("Failed to open URL: {}", e);
@@ -393,14 +477,12 @@ impl AppCore {
         Ok(())
     }
 
-    fn start_login_websocket(app_core: Arc<Mutex<AppCore>>, shutdown_notify: Arc<Notify>) -> Result<Url> {
-        let app_core_clone = app_core.clone();
+    fn start_login_websocket(app_core: &mut AppCore, shutdown_notify: Arc<Notify>) -> Result<Url> {
         let (auth_url, pkce_verifier, csrf_token) = {
-            app_core.clone().blocking_lock().authorization_url()
+            app_core.authorization_url()
         };
-        let app_core = app_core.clone();
 
-        let baseurl = app_core.blocking_lock().api_base_url();
+        let baseurl = app_core.api_base_url();
         let ws_url = baseurl + "/api/public/oidc/login-requests/" + csrf_token.secret();
         let mut ws_url = Url::parse(&ws_url).unwrap();
         match ws_url.scheme() {
@@ -408,6 +490,9 @@ impl AppCore {
             "https" => ws_url.set_scheme("wss").unwrap(),
             _ => panic!("unsupported scheme")
         };
+
+        let cmd_tx = app_core.core_cmd_tx.clone();
+
         tokio::spawn( async move {
             let (mut ws_stream, _) = match tokio_tungstenite::connect_async(&ws_url).await {
                 Ok(s) => s,
@@ -417,16 +502,14 @@ impl AppCore {
                 }
             };
 
+            let mut cmd = AppCoreCommand::Logout;
             tokio::select! {
                 _ = shutdown_notify.notified() => {
                     return;
                 }
                 ws_result = ws_stream.next() => match ws_result {
                     Some(Ok(tokio_tungstenite::tungstenite::Message::Text(code))) => {
-                        if let Ok(()) = Self::exchange_code_for_tokens(app_core, code, pkce_verifier).await {
-                            app_core_clone.lock().await.broadcast_core_event(CoreEvent::LogginSuccessful);
-                            return;
-                        }
+                        cmd = AppCoreCommand::ExchangeCodeForToken(code, pkce_verifier);
                     }
                     Some(Ok(msg)) => {
                         log::error!("wrong message type received: {msg}");
@@ -439,13 +522,9 @@ impl AppCore {
                     }
                 }
             }
-            app_core_clone.lock().await.broadcast_core_event(CoreEvent::LoggedOut);
+            cmd_tx.send(cmd).await.unwrap();
         });
         Ok(auth_url)
-    }
-
-    pub fn cancel_login(&mut self) {
-        self.login_cancel_notify.notify_waiters();
     }
 
     fn expires_at_from_now(expires_in: Option<Duration>) -> Instant {
@@ -458,8 +537,7 @@ impl AppCore {
         Instant::now() + expires_in
     }
 
-    async fn exchange_code_for_tokens(app_core: Arc<Mutex<AppCore>>, code: String, pkce_verifier: PkceCodeVerifier) -> Result<()> {
-        let mut app_core = app_core.lock().await;
+    async fn exchange_code_for_tokens(app_core: &mut AppCore, code: String, pkce_verifier: PkceCodeVerifier) -> Result<()> {
         let client = app_core.oidc_client.as_ref().unwrap();
         let token_response = client.exchange_code(AuthorizationCode::new(code))
             .set_pkce_verifier(pkce_verifier)
@@ -499,14 +577,9 @@ impl AppCore {
         (auth_url, pkce_verifier, csrf_token)
     }
 
-    pub async fn init(&mut self) -> Result<()>{
+    async fn init(&mut self) -> Result<()>{
         let issuer_url = self.config.get("ISSUER_URL")?;
         let client_id = self.config.get("CLIENT_ID")?;
-        self.init_provider(&issuer_url, &client_id).await?;
-        Ok(())
-    }
-
-    async fn init_provider(&mut self, issuer_url: &str, client_id: &str) -> Result<()>{
         let issuer_url = IssuerUrl::new(issuer_url.to_string()).unwrap();
         let redirect_url = RedirectUrl::new(self.redirect_url())?;
         
