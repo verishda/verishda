@@ -52,10 +52,6 @@ fn main() {
 }
 
 fn ui_main() {
-    // initialize tokio console subscriber
-    // https://github.com/tokio-rs/console?tab=readme-ov-file#using-it
-    console_subscriber::init();
-
     let app_core = AppCore::new(Box::new(mk_config()));
 
     let main_window = MainWindow::new().unwrap();
