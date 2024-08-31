@@ -4,12 +4,10 @@ use clap::Parser;
 
 use chrono::{Datelike, Days};
 use verishda_dto::types::{Presence, PresenceAnnouncementKind, Site};
-use std::{collections::HashMap, env, sync::Arc};
-use tokio::sync::Mutex;
+use std::{collections::HashMap, env};
 
-use core::{Announcement, PersonFilter};
+use core::{Announcement, AppCoreRef, PersonFilter};
 use slint::{Model, ModelRc, VecModel, Weak};
-use tokio::runtime::Handle;
 use verishda_config::{default_config, CompositeConfig, Config, EnvConfig};
 
 slint::include_modules!();
@@ -61,7 +59,7 @@ fn ui_main() {
     let app_core_clone = app_core.clone();
     let app_ui = main_window.global::<AppUI>();
     app_ui.on_login_triggered(move || {
-        start_login(app_core_clone.clone(), main_window_weak.clone());
+        start_login(&app_core_clone, main_window_weak.clone());
     });
 
     // wire site_names to sites property, mapping names. This is so that
@@ -111,13 +109,17 @@ fn ui_main() {
     });
 
     let main_window_weak = main_window.as_weak();
-    app_core.blocking_lock().on_core_event(move |event| {
+    app_core.on_core_event(move |event| {
         log::debug!("core event received: {event:?}");
         main_window_weak
             .upgrade_in_event_loop(|main_window| {
                 let app_ui = main_window.global::<AppUI>();
 
                 match event {
+                    core::CoreEvent::InitializationFinished => 
+                        app_ui.set_state(MainWindowState::ShowingWelcomeView),
+                    core::CoreEvent::InitializationFailed =>
+                        panic!("Failed to fetch provider metadata"),
                     core::CoreEvent::LoggingIn => 
                         app_ui.set_state(MainWindowState::ShowingWaitingForLoginView),
                     core::CoreEvent::LogginSuccessful => 
@@ -178,13 +180,9 @@ fn ui_main() {
 
     main_window.show().unwrap();
 
-    let main_window_weak = main_window.as_weak();
-    let app_core_clone = app_core.clone();
-    start_fetch_provider_metadata(main_window_weak.clone(), app_core_clone);
-
     slint::run_event_loop().unwrap();
 
-    app_core.blocking_lock().quit();
+    app_core.quit();
 }
 
 fn mk_config() -> impl Config {
@@ -213,35 +211,13 @@ where
     tray
 }
 
-fn start_fetch_provider_metadata(main_window: Weak<MainWindow>, app_core: Arc<Mutex<AppCore>>) {
-    main_window
-        .unwrap()
-        .global::<AppUI>()
-        .set_state(MainWindowState::Startup);
-    Handle::current().spawn(async move {
-        let mut app_core = app_core.lock().await;
-        match app_core.init().await {
-            Ok(_) => {
-                main_window
-                    .upgrade_in_event_loop(|main_window| {
-                        let app_ui = main_window.global::<AppUI>();
-                        app_ui.set_state(MainWindowState::ShowingWelcomeView);
-                    })
-                    .unwrap();
-            }
-            Err(e) => panic!("Failed to fetch provider metadata {e}"),
-        };
-    });
+
+fn start_login(app_core: &AppCoreRef, _main_window_weak: Weak<MainWindow>) {
+    app_core.start_login();
 }
 
-fn start_login(app_core: Arc<Mutex<AppCore>>, _main_window_weak: Weak<MainWindow>) {
-    if let Err(e) = AppCore::start_login(app_core.clone()) {
-        log::error!("Failed to start login: {e}");
-    };
-}
-
-fn cancel_login(app_core: Arc<Mutex<AppCore>>, main_window: Weak<MainWindow>) {
-    app_core.blocking_lock().cancel_login();
+fn cancel_login(app_core: AppCoreRef, main_window: Weak<MainWindow>) {
+    app_core.cancel_login();
     main_window
         .upgrade_in_event_loop(|main_window| {
             let app_ui = main_window.global::<AppUI>();
@@ -250,27 +226,27 @@ fn cancel_login(app_core: Arc<Mutex<AppCore>>, main_window: Weak<MainWindow>) {
         .unwrap();
 }
 
-fn site_selected(app_core: Arc<Mutex<AppCore>>, site_id: &str) {
+fn site_selected(app_core: AppCoreRef, site_id: &str) {
     log::info!("Site selected: {site_id}");
-    app_core.blocking_lock().set_site(site_id);
+    app_core.set_site(site_id);
 }
 
-fn refresh_requested(app_core: Arc<Mutex<AppCore>>) {
+fn refresh_requested(app_core: AppCoreRef) {
     log::info!("Refresh requested");
-    app_core.blocking_lock().refresh();
+    app_core.refresh();
 }
 
-fn change_favorite_requested(app_core: Arc<Mutex<AppCore>>, user_id: &str, favorite: bool) {
+fn change_favorite_requested(app_core: AppCoreRef, user_id: &str, favorite: bool) {
     log::info!("favorite state change requested for user {user_id}: {favorite}");
-    app_core.blocking_lock().change_favorite(user_id, favorite);
+    app_core.change_favorite(user_id, favorite);
 }
 
-fn set_filter(app_core: Arc<Mutex<AppCore>>, term: Option<String>, favorites_only: bool) {
+fn set_filter(app_core: AppCoreRef, term: Option<String>, favorites_only: bool) {
     log::info!("favorit only filter set: {favorites_only}");
-    app_core.blocking_lock().filter(PersonFilter{term, favorites_only})
+    app_core.filter(PersonFilter{term, favorites_only})
 }
 
-fn announce(app_core: Arc<Mutex<AppCore>>, site_id: String, person: PersonModel) {
+fn announce(app_core: AppCoreRef, site_id: String, person: PersonModel) {
     let person_announcements = person.announcements.clone().iter().collect::<Vec<_>>();
     log::debug!("Announcement made on site {site_id:?} as {person:?} with announcements {person_announcements:?}");
     let announcements = person
@@ -279,7 +255,7 @@ fn announce(app_core: Arc<Mutex<AppCore>>, site_id: String, person: PersonModel)
         .map(AnnouncementModel::into)
         .collect();
     log::debug!("converted as announcements {announcements:?}");
-    app_core.blocking_lock().announce(site_id, announcements);
+    app_core.announce(site_id, announcements);
 }
 
 impl Into<SiteModel> for &Site {

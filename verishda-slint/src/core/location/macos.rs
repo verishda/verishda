@@ -1,13 +1,12 @@
-use std::{sync::Arc, thread, time::{Duration, Instant}};
-use objc2_foundation::{NSArray, NSError, NSObject, NSObjectProtocol, NSRunLoop};
-use core_foundation::runloop::{kCFRunLoopDefaultMode, CFRunLoop, CFRunLoopRun, CFRunLoopRunResult};
+use std::{sync::Arc, thread::{self}, time::Duration};
+use objc2_foundation::{NSArray, NSError, NSObject, NSObjectProtocol};
+use core_foundation::runloop::{kCFRunLoopDefaultMode, CFRunLoop, CFRunLoopRunResult};
 use objc2::{declare_class, msg_send_id, mutability, rc::Retained, runtime::ProtocolObject, ClassType, DeclaredClass, Message};
 use objc2_core_location::{CLLocation, CLLocationManager, CLLocationManagerDelegate};
-use oslog::OsLogger;
 use tokio::sync::RwLock;
 
 
-use super::{Location, PollingLocator};
+use super::Location;
 
 struct LocationDelegateIvars {
     current_location: Arc<RwLock<super::Location>>, 
@@ -51,7 +50,9 @@ declare_class!(
         ) {
             log::info!("locations updated: {:?}", DebugNSArray{array:locations});     
             if let Some(loc) = locations.last() {
-                *(self.ivars().current_location.blocking_write()) = Location::from(loc);
+                let loc = Location::from(loc);
+                log::debug!("wrote location to rwlock: {loc:?}");
+                *(self.ivars().current_location.blocking_write()) = loc;
             }
         }
 
@@ -59,8 +60,9 @@ declare_class!(
 );
 
 impl LocationDelegate {
-    pub fn new() -> Retained<Self> {
-        unsafe { msg_send_id![Self::alloc(), init] }
+    pub fn new(current_location: Arc<RwLock<Location>>) -> Retained<Self> {
+        let this = Self::alloc().set_ivars(LocationDelegateIvars{ current_location });
+        unsafe { msg_send_id![super(this), init] }
     }
 }
 
@@ -112,7 +114,9 @@ impl MacOsPollingLocator {
     }
 
     pub(crate) async fn poll_location(&self) -> super::Location {
-        self.current_location.read().await.clone()
+        let loc = self.current_location.read().await.clone();
+        log::debug!("read location {loc:?}");
+        loc
     }
 }
 
@@ -131,6 +135,7 @@ unsafe fn handle_authorization_status(manager: &CLLocationManager) {
         CLAuthorizationStatus::kCLAuthorizationStatusAuthorizedWhenInUse => {
             log::info!("authorization for reading location data received");
             manager.startUpdatingLocation();
+            manager.requestLocation();
         },
         CLAuthorizationStatus::kCLAuthorizationStatusRestricted |
         CLAuthorizationStatus::kCLAuthorizationStatusDenied => {
@@ -147,7 +152,7 @@ unsafe fn handle_authorization_status(manager: &CLLocationManager) {
 fn run_location_manager_loop(current_location: Arc<RwLock<Location>>) {
     let location_manager;
 
-    let delegate = LocationDelegate::new();
+    let delegate = LocationDelegate::new(current_location);
     unsafe {
         location_manager = CLLocationManager::new();
         location_manager.setDistanceFilter(100.);
