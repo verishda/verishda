@@ -191,6 +191,8 @@ export component SitePresenceView inherits Window {
         {name: "Brian Nürnberg"},
     ];
 
+    in-out property <int> selected_site_index <=> site-combo.current-index;
+    
     in-out property <[SiteModel]> sites: [
         {name: "Stuttgart", id: "stuttgart"},
         {name: "Reutlingen", id: "reutlingen"},

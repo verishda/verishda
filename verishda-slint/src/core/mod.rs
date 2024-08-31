@@ -58,7 +58,7 @@ pub enum CoreEvent {
     LoggingIn,
     LogginSuccessful,
     LoggedOut,
-    SitesUpdated(Vec<verishda_dto::types::Site>),
+    SitesUpdated{sites: Vec<verishda_dto::types::Site>, selected_index: Option<usize>},
     PresencesChanged(Vec<verishda_dto::types::Presence>),
 }
 
@@ -240,7 +240,33 @@ impl AppCore {
                         let location = Location::new(site.latitude as f64, site.longitude as f64);
                         let _ = location_handler.add_geofence_circle(&site.id, &location, 100.);
                     }
-                    self.broadcast_core_event(CoreEvent::SitesUpdated(sites));
+                    drop(location_handler);
+
+                    // find out new selected site_id and index after
+                    // filtering the current selection against the
+                    // sites list we just received
+                    let site_index = self.site.as_ref()
+                    .or(sites.get(0).map(|s|&s.id))
+                    .and_then(|selected_id|{
+                        sites.iter()
+                        .position(|site|&site.id == selected_id)
+                        .map(|i|(selected_id.clone(),i))
+                    });
+
+                    let selected_index;
+                    match site_index {
+                        Some((site_id, index)) => {
+                            selected_index = Some(index);
+                            self.site = Some(site_id);
+                        }
+                        None => {
+                            selected_index = None;
+                            self.site = None;
+                        }
+                    }
+                    self.broadcast_core_event(CoreEvent::SitesUpdated{sites, selected_index});
+
+                    self.refresh_presences().await;
                 }
                 Err(e) => {
                     println!("Failed to get sites: {}", e);

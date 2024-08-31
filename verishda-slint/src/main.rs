@@ -124,7 +124,7 @@ fn ui_main() {
                         app_ui.set_state(MainWindowState::ShowingSitePresenceView),
                     core::CoreEvent::LoggedOut => 
                         app_ui.set_state(MainWindowState::ShowingWelcomeView),
-                    core::CoreEvent::SitesUpdated(sites) => {
+                    core::CoreEvent::SitesUpdated{sites, selected_index} => {
                         let sites_model = app_ui.get_sites();
                         let sites_model = sites_model
                             .as_any()
@@ -133,8 +133,9 @@ fn ui_main() {
 
                         let sites_vec: Vec<SiteModel> =
                             sites.iter().map(|site| site.into()).collect();
-
+                    
                         sites_model.set_vec(sites_vec);
+                        app_ui.set_selected_site_index(selected_index.map(|i|i as i32).unwrap_or(-1))
                     }
                     core::CoreEvent::PresencesChanged(presences) => {
                         let persons_model = app_ui.get_persons();

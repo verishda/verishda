@@ -20,6 +20,7 @@ export global AppUI {
 
     in property <MainWindowState> state: MainWindowState.ShowingWelcomeView;
     in-out property <[SiteModel]> sites;
+    in-out property <int> selected_site_index;
     in property <[string]> site_names;
     in property <[PersonModel]> persons;
     in property <int> current_day_index;
@@ -106,6 +107,7 @@ export component MainWindow inherits Window {
         site_presence_view := SitePresenceView {
             width: root.width;
             sites <=> AppUI.sites;
+            selected_site_index <=> AppUI.selected_site_index;
             site_names <=> AppUI.site_names;
             persons <=> AppUI.persons;
             site_selected(site_id) => {
