@@ -320,11 +320,11 @@ fn to_logged_as_name(auth_info: &AuthInfo) -> String {
 }
 
 #[debug_handler(state=VerishdaState)]
-async fn handle_post_sites_siteid_hello(mut dbcon: DbCon, s: State<VerishdaState>, auth_info: AuthInfo, Path(site_id): Path<String>, _: State<ConnectionPool>) -> Result<(), HandlerError> {
+async fn handle_post_sites_siteid_hello(mut dbcon: DbCon, _: State<VerishdaState>, auth_info: AuthInfo, Path(site_id): Path<String>, _: State<ConnectionPool>) -> Result<StatusCode, HandlerError> {
 
     let logged_as_name = to_logged_as_name(&auth_info);
     site::hello_site(&mut dbcon.0, &auth_info.subject, &logged_as_name, &site_id).await?;
-    Ok(())
+    Ok(StatusCode::ACCEPTED)
 }
 
 #[debug_handler]
