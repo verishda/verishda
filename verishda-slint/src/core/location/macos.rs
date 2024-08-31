@@ -104,8 +104,8 @@ pub(crate) struct MacOsPollingLocator {
     current_location: Arc<RwLock<super::Location>>,
 }
 
-impl MacOsPollingLocator {
-    pub(crate) fn new() -> Self {
+impl super::PollingLocator for MacOsPollingLocator {
+    fn new() -> Self {
         let loc = Self::default();
         let target = loc.current_location.clone();
         thread::spawn(||run_location_manager_loop(target));
@@ -113,7 +113,7 @@ impl MacOsPollingLocator {
         loc
     }
 
-    pub(crate) async fn poll_location(&self) -> super::Location {
+    async fn poll_location(&self) -> super::Location {
         let loc = self.current_location.read().await.clone();
         log::debug!("read location {loc:?}");
         loc

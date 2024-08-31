@@ -19,8 +19,8 @@ pub(crate) struct WindowsPollingLocator {
 
 // https://learn.microsoft.com/en-us/previous-versions/windows/apps/dn263199(v=win.10)
 // https://docs.microsoft.com/en-us/uwp/api/windows.devices.geolocation.geofencing.geofencemonitor
-impl WindowsPollingLocator {
-    pub(crate) fn new() -> Self {
+impl super::PollingLocator for WindowsPollingLocator {
+    fn new() -> Self {
         Self {
             loc: Geolocator::new().unwrap()
         }
@@ -28,7 +28,7 @@ impl WindowsPollingLocator {
 
     // https://learn.microsoft.com/en-us/previous-versions/windows/apps/dn263199(v=win.10)
     // https://docs.microsoft.com/en-us/uwp/api/windows.devices.geolocation.geofencing.geofencemonitor
-    pub(crate) async fn poll_location(&self) -> Location {
+    async fn poll_location(&self) -> Location {
         let pos = self.loc.GetGeopositionAsync().unwrap().await.unwrap();
         let location = Location::from(
             &pos.Coordinate()

@@ -6,6 +6,8 @@ use tokio::sync::Mutex;
 mod windows;
 #[cfg(target_os = "macos")]
 mod macos;
+#[cfg(not(any(target_os="windows", target_os="macos")))]
+mod dummy;
 
 #[derive(Clone, Debug, Default)]
 pub struct Location {
@@ -89,14 +91,22 @@ impl GeoCircle {
     }
 }
 
+pub(crate) trait PollingLocator {
+    fn new() -> Self;
+
+    async fn poll_location(&self) -> Location;
+}
+
 #[cfg(target_os="windows")]
-type PollingLocator = windows::WindowsPollingLocator;
+type PollingLocatorImpl = windows::WindowsPollingLocator;
 #[cfg(target_os="macos")]
-type PollingLocator = macos::MacOsPollingLocator;
+type PollingLocatorImpl = macos::MacOsPollingLocator;
+#[cfg(not(any(target_os = "windows", target_os = "mac")))]
+type PollingLocatorImpl = dummy::DummyPollingLocator;
 
 #[derive(Debug)]
 pub(super) struct LocationHandler {
-    polling_locator: PollingLocator,
+    polling_locator: PollingLocatorImpl,
     shapes: std::collections::HashMap<String, GeoCircle>,
     poll_interval_seconds: u32,
     in_fences: std::collections::HashSet<String>,
@@ -107,7 +117,7 @@ impl LocationHandler {
     pub fn new() -> Arc<Mutex<LocationHandler>> {
         let handler = Arc::new(Mutex::new(Self {
             
-            polling_locator: PollingLocator::new(),
+            polling_locator: PollingLocatorImpl::new(),
             poll_interval_seconds: 5,
             shapes: HashMap::new(),
             in_fences: HashSet::new(),
