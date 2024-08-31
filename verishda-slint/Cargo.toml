@@ -51,5 +51,4 @@ embed-resource = "2.4.2"
 [target.'cfg(windows)'.dependencies]
 windows = {version="0.54.0", features = [ "Devices_Geolocation", "Devices_Geolocation_Geofencing", "Foundation", "Foundation_Collections", "Win32_UI_WindowsAndMessaging", "Win32_System_Console" ]}
 winreg = "0.52"
-tray-item = "0.10.0"
 

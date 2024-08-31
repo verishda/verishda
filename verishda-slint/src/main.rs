@@ -160,24 +160,6 @@ fn ui_main() {
             .unwrap();
     });
 
-    let main_window_weak = std::sync::Mutex::new(main_window.as_weak());
-
-    #[cfg(windows)]
-    let _tray = init_systray(
-        move || {
-            main_window_weak
-                .lock()
-                .unwrap()
-                .upgrade_in_event_loop(|main_window| {
-                    let _ = main_window.show();
-                })
-                .unwrap();
-        },
-        || {
-            let _ = slint::quit_event_loop();
-        },
-    );
-
     main_window.show().unwrap();
 
     slint::run_event_loop().unwrap();
@@ -190,25 +172,6 @@ fn mk_config() -> impl Config {
         Box::new(EnvConfig::from_env()), 
         Box::new(default_config())
     )
-}
-
-#[cfg(windows)]
-fn init_systray<FO, FQ>(open_handler: FO, quit_handler: FQ) -> tray_item::TrayItem
-where
-    FO: Fn() + Send + Sync + 'static,
-    FQ: Fn() + Send + Sync + 'static,
-{
-    use tray_item::*;
-
-    let mut tray = TrayItem::new("Verishda", IconSource::Resource("tray-default")).unwrap();
-
-    tray.add_label("Verishda").unwrap();
-
-    tray.add_menu_item("Open", open_handler).unwrap();
-
-    tray.add_menu_item("Quit", quit_handler).unwrap();
-
-    tray
 }
 
 
