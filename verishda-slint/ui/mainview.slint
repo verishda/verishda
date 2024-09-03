@@ -217,16 +217,13 @@ export component SitePresenceView inherits Window {
     callback announcement_change_requested(string, PersonModel, int);
     callback filter_set(string, bool);
 
-    out property <string> current_site_id <=> panel.current_site_id;
+    out property <string> current_site_id <=> site_combo.current_site_id;
 
     panel := VerticalLayout { 
         alignment: start;
 
-        out property <string> current_site_id <=> top_bar.current_site_id;
-        
         top_bar := HorizontalLayout {
             spacing: 5px;
-            out property <string> current_site_id <=> site_combo.current_site_id;
 
             favfilter_button := Button {
                 checkable: true;
@@ -295,6 +292,9 @@ export component SitePresenceView inherits Window {
                     selected(name) => {
                         self.current_site_id = get_current_site_id();
                         root.site_selected(get_current_site_id())
+                    }
+                    init => {
+                        self.current_site_id = get_current_site_id();
                     }
                 }
             }
