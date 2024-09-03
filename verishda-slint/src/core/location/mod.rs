@@ -101,7 +101,7 @@ pub(crate) trait PollingLocator {
 type PollingLocatorImpl = windows::WindowsPollingLocator;
 #[cfg(target_os="macos")]
 type PollingLocatorImpl = macos::MacOsPollingLocator;
-#[cfg(not(any(target_os = "windows", target_os = "mac")))]
+#[cfg(not(any(target_os = "windows", target_os = "macos")))]
 type PollingLocatorImpl = dummy::DummyPollingLocator;
 
 #[derive(Debug)]
