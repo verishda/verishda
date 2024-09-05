@@ -1,4 +1,4 @@
-import { StandardTableView , HorizontalBox, VerticalBox, ComboBox, Button, GroupBox, TextEdit} from "std-widgets.slint";
+import { StandardTableView , HorizontalBox, VerticalBox, ComboBox, Button, GroupBox, TextEdit, Palette} from "std-widgets.slint";
 
 export enum AnnouncementModel {
     NotAnnounced,
@@ -98,9 +98,11 @@ component PresenceItem inherits PresenceCell{
                     source: @image-url("icons/p-announced-recurring.svg");
                 }
                 absent when !is-present && announcement == AnnouncementModel.NotAnnounced && !(touch.has-hover && person.is-self): {
+                    colorize: Palette.color-scheme == ColorScheme.dark ? white : black;
                     source: @image-url("icons/p-absent.svg");
                 }
                 absent-hover when !is-present && announcement == AnnouncementModel.NotAnnounced && (touch.has-hover && person.is-self): {
+                    colorize: Palette.color-scheme == ColorScheme.dark ? white : black;
                     source: @image-url("icons/p-absent-hover.svg");
                 }
             ]
