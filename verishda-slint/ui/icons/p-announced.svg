@@ -29,8 +29,8 @@
      inkscape:cy="20.25"
      inkscape:window-width="1360"
      inkscape:window-height="807"
-     inkscape:window-x="2148"
-     inkscape:window-y="88"
+     inkscape:window-x="368"
+     inkscape:window-y="60"
      inkscape:window-maximized="0"
      inkscape:current-layer="layer1"
      showgrid="false">
@@ -51,12 +51,6 @@
      inkscape:label="Ebene 1"
      inkscape:groupmode="layer"
      id="layer1">
-    <circle
-       style="fill:#ffffff;fill-opacity:1;stroke-width:0.264583"
-       id="path1"
-       cx="6.3830729"
-       cy="6.316927"
-       r="6.1515622" />
     <ellipse
        style="fill:#3df772;fill-opacity:0;stroke-width:0.264583"
        id="path2"

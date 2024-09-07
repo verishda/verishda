@@ -53,6 +53,7 @@ component FavStar inherits Image {
         }
         not_favorite_hover when touch.has-hover && !self.is-favorite && !self.is-self: {
             source: @image-url("icons/star_hollow.svg");
+            colorize: Palette.foreground;
         }
         not_favorite when !touch.has-hover && !self.is_favorite: {
         }
@@ -98,11 +99,11 @@ component PresenceItem inherits PresenceCell{
                     source: @image-url("icons/p-announced-recurring.svg");
                 }
                 absent when !is-present && announcement == AnnouncementModel.NotAnnounced && !(touch.has-hover && person.is-self): {
-                    colorize: Palette.color-scheme == ColorScheme.dark ? white : black;
+                    colorize: Palette.foreground;
                     source: @image-url("icons/p-absent.svg");
                 }
                 absent-hover when !is-present && announcement == AnnouncementModel.NotAnnounced && (touch.has-hover && person.is-self): {
-                    colorize: Palette.color-scheme == ColorScheme.dark ? white : black;
+                    colorize: Palette.foreground;
                     source: @image-url("icons/p-absent-hover.svg");
                 }
             ]
@@ -235,6 +236,7 @@ export component SitePresenceView inherits Window {
                     }
                     unchecked when !self.checked: {
                         icon: @image-url("icons/star_hollow.svg");
+                        colorize-icon: true;
                     }
                 ]
                 
@@ -244,6 +246,7 @@ export component SitePresenceView inherits Window {
             }
             Button {
                 icon: @image-url("icons/reload.svg");
+                colorize-icon: true;
                 clicked => {
                     root.refresh_requested();
                 }
@@ -251,6 +254,7 @@ export component SitePresenceView inherits Window {
             search_button := Button {
                 checkable: true;
                 icon: @image-url("icons/search.svg");
+                colorize-icon: true;
                 clicked => {
                     if !self.checked {
                         search-text.text = "";

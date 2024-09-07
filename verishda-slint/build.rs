@@ -2,6 +2,7 @@ use embed_manifest::{embed_manifest, new_manifest};
 
 fn main() {
     // slint build
+    println!("cargo::rerun-if-changed=ui/icons");
     slint_build::compile("ui/ui.slint").unwrap();
 
     do_embed_manifest();
