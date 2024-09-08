@@ -145,6 +145,7 @@ component PresenceGrid {
     }
 
     VerticalLayout {
+        padding: 8px;
         HorizontalLayout {
             alignment: end;
             for day_offset in 7: PresenceHeaderCell {
@@ -154,8 +155,10 @@ component PresenceGrid {
         }
         for p in persons: HorizontalLayout {
             HorizontalLayout {
-                FavStar {
-                    height: 20px;
+                padding-bottom: 8px;
+                spacing: 8px;
+                FavStar {       
+                    height: 20px;                    
                     horizontal-alignment: left;
                     is-favorite: p.is-favorite;
                     is-self: p.is-self;
@@ -226,8 +229,9 @@ export component SitePresenceView inherits Window {
         alignment: start;
 
         top_bar := HorizontalLayout {
-            spacing: 5px;
-
+            padding: 16px;
+            spacing: 16px;
+            
             favfilter_button := Button {
                 checkable: true;
                 states [
@@ -251,7 +255,7 @@ export component SitePresenceView inherits Window {
                     root.refresh_requested();
                 }
             }
-            search_button := Button {
+            search_button := Button {                
                 checkable: true;
                 icon: @image-url("icons/search.svg");
                 colorize-icon: true;
