@@ -71,6 +71,7 @@ component PresenceHeaderCell inherits PresenceCell {
     Text {
         horizontal-alignment: center;
         text: parent.text;
+        font-size: 12px;
     }
 }
 
@@ -276,6 +277,7 @@ export component SitePresenceView inherits Window {
                         text: "Person: ";
                         vertical-alignment: center;
                         horizontal-stretch: 0;
+                        font-size: 12px;
                     }
                     search_text := TextInput {
                         text: "";

@@ -89,7 +89,7 @@ component WaitingForLoginView {
 export component MainWindow inherits Window {
     title: "Verishda";
     vertical-stretch: 1;
-
+    default-font-size: 14px;
     if AppUI.state == MainWindowState.Startup: 
         fetch_view := FetchProviderMetaView {}
 
