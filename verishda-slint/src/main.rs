@@ -12,6 +12,7 @@ use verishda_config::{default_config, CompositeConfig, Config, EnvConfig};
 
 slint::include_modules!();
 
+mod util;
 mod core;
 
 use core::AppCore;
@@ -55,6 +56,8 @@ fn ui_main() {
     let app_core = AppCore::new(Box::new(mk_config()));
 
     let main_window = MainWindow::new().unwrap();
+
+    util::init();
     let main_window_weak = main_window.as_weak();
     let app_core_clone = app_core.clone();
     let app_ui = main_window.global::<AppUI>();
