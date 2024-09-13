@@ -54,7 +54,8 @@ component WelcomeView inherits VerticalBox {
         }
 
         VerticalLayout {
-            spacing: 5px;
+            padding: 16px;
+            spacing: 16px;
             vertical-stretch: 1;
             alignment: center;
             Text {
@@ -89,7 +90,7 @@ component WaitingForLoginView {
 export component MainWindow inherits Window {
     title: "Verishda";
     vertical-stretch: 1;
-
+    default-font-size: 14px;
     if AppUI.state == MainWindowState.Startup: 
         fetch_view := FetchProviderMetaView {}
 
