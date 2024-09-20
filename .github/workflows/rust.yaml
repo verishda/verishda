@@ -29,5 +29,5 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.target }}-release
-          path: /target/release/verishda-slint${{ matrix.exe-suffix }}
+          path: target/release/verishda-slint${{ matrix.exe-suffix }}
           retention-days: 30
