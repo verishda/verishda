@@ -14,17 +14,20 @@ jobs:
         include:
           - target: x86_64-pc-windows-gnu
             os: windows-latest
-          - target: x86_64-unknown-linux-musl
-            os: ubuntu-latest
-          - target: x86_64-apple-darwin
-            os: macos-latest
+            exe-suffix: '.exe'
+#          - target: x86_64-unknown-linux-musl
+#            os: ubuntu-latest
+#            exe-suffix: ''
+#          - target: x86_64-apple-darwin
+#            os: macos-latest
+#            exe-suffix: ''
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       - name: Compile and release
-        run: cargo build --verbose --release
+        run: cargo build --release
       - name: Upload release
         uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.target }}-release
-          path: ${{ matrix.target }}/target/release/
+          path: /target/release/verishda-slint${{ matrix.exe-suffix }}
           retention-days: 30
