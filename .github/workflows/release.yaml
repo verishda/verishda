@@ -28,7 +28,7 @@ jobs:
           RUSTTARGET: ${{ matrix.target }}
           ARCHIVE_TYPES: zip
       - name: Upload release
-        uses: actions/upload-artifact@v2
+        uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.target }}-release
           path: ${{ matrix.target }}/target/release/
