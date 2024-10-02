@@ -32,7 +32,7 @@ chrono = { version = "0.4.37", features = ["serde"] }
 clap = { version = "4.5.3", features = ["derive"] }
 webbrowser = "1.0.0"
 
-verishda-dto = {path="../verishda-dto"}
+progenitor-client = "0.4"
 verishda-config = {path="../verishda-config"}
 
 [target.'cfg(target_os = "macos")'.dependencies]
@@ -43,6 +43,7 @@ core-foundation = "0.10.0"
 objc2-foundation = "0.2.2"
 
 [build-dependencies]
+verishda-dto = {path="../verishda-dto"}
 slint-build = "1.7"
 quote = "1.0"
 embed-manifest = "1.4.0"

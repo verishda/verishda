@@ -11,10 +11,11 @@ use url::Url;
 use log::*;
 
 use verishda_config::Config;
-use verishda_dto::{self, types::{PresenceAnnouncement, PresenceAnnouncementKind, PresenceAnnouncements}};
+use verishda_dto::types::{PresenceAnnouncement, PresenceAnnouncementKind, PresenceAnnouncements};
 use crate::core::location::Location;
 
 mod location;
+pub mod verishda_dto;
 
 #[derive(Default, Clone, Debug)]
 pub enum Announcement {
@@ -310,7 +311,7 @@ impl AppCore {
                 .connection_verbose(true)
                 .build()
                 .expect("client creation failed");
-            let client = verishda_dto::Client::new_with_client(&self.api_base_url(), inner);
+            let client = verishda_dto::Client::new_with_client(&self.api_base_url(), inner, verishda_dto::ClientInner{});
             Ok(client)
         } else {
             Err(anyhow::anyhow!("Not logged in"))

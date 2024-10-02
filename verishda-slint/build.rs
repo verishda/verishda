@@ -1,4 +1,5 @@
 use embed_manifest::{embed_manifest, new_manifest};
+use quote::quote;
 
 fn main() {
     // slint build
@@ -8,6 +9,8 @@ fn main() {
     do_embed_manifest();
 
     do_embed_resources();
+
+    verishda_dto::run_progenitor("../verishda.yaml", quote!(ClientInner));
 }
 
 

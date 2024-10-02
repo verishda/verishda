@@ -53,3 +53,9 @@ dashmap = "5.5.3"
 refinery = { version = "0.8.14", features = ["postgres", "tokio-postgres"] }
 tokio-postgres = "0.7"
 futures-util = "0.3.30"
+progenitor-client = "0.4"
+reqwest = {version="0.11", features = ["json", "stream"] }
+
+[build-dependencies]
+verishda-dto = {path="../verishda-dto"}
+quote = "1.0"
