@@ -198,7 +198,7 @@ components:
         - logged_as_name
         - is_self
         - currently_present
-        - announced_dates
+        - announcements
         - is_favorite
       properties:
         user_id:
