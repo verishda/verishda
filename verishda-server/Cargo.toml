@@ -18,7 +18,7 @@ path = "src/bin/shuttle.rs"
 verishda-dto = {path="../verishda-dto"}
 verishda-config = {path="../verishda-config"}
 # date and time
-chrono = "0.4.38"
+chrono = {workspace = true}
 # Useful crate to handle errors.
 anyhow = {version="1", features=["backtrace"]}
 thiserror = "1.0.40"
@@ -53,8 +53,8 @@ dashmap = "5.5.3"
 refinery = { version = "0.8.14", features = ["postgres", "tokio-postgres"] }
 tokio-postgres = "0.7"
 futures-util = "0.3.30"
-progenitor-client = "0.4"
-reqwest = {version="0.11", features = ["json", "stream"] }
+progenitor-client = {workspace=true}
+reqwest = {workspace=true, features = ["json", "stream"] }
 
 [build-dependencies]
 verishda-dto = {path="../verishda-dto"}
