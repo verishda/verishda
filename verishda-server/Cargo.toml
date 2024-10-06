@@ -18,7 +18,7 @@ path = "src/bin/shuttle.rs"
 verishda-dto = {path="../verishda-dto"}
 verishda-config = {path="../verishda-config"}
 # date and time
-chrono = "0.4.38"
+chrono = {workspace = true}
 # Useful crate to handle errors.
 anyhow = {version="1", features=["backtrace"]}
 thiserror = "1.0.40"

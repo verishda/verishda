@@ -12,3 +12,9 @@ members = [
 
 postgres-protocol = {git="https://github.com/sfackler/rust-postgres.git", branch="master"}
 tokio-postgres = {git="https://github.com/sfackler/rust-postgres.git", branch="master"}
+
+[workspace.dependencies]
+progenitor = "0.8"
+progenitor-client = "0.8"
+reqwest = {version="0.12", features = ["json", "stream"]}
+chrono = "0.4"
