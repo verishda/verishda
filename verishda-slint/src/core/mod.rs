@@ -311,7 +311,8 @@ impl AppCore {
                 .connection_verbose(true)
                 .build()
                 .expect("client creation failed");
-            let client = verishda_dto::Client::new_with_client(&self.api_base_url(), inner, verishda_dto::ClientInner{});
+            let client_inner = verishda_dto::ClientInner::new(self.core_cmd_tx.clone());
+            let client = verishda_dto::Client::new_with_client(&self.api_base_url(), inner, client_inner);
             Ok(client)
         } else {
             Err(anyhow::anyhow!("Not logged in"))

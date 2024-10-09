@@ -10,7 +10,7 @@ fn main() {
 
     do_embed_resources();
 
-    verishda_dto::run_progenitor("../verishda.yaml", quote!(ClientInner));
+    verishda_dto::run_progenitor("../verishda.yaml", quote!(ClientInner), Some(quote!(ClientInner::post_hook)));
 }
 
 

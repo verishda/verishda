@@ -34,6 +34,7 @@ webbrowser = "1.0.0"
 
 progenitor-client = {workspace=true}
 verishda-config = {path="../verishda-config"}
+hyper-util = { version = "0.1.9", features = ["client"] }
 
 [target.'cfg(target_os = "macos")'.dependencies]
 objc2 = "0.5.2"

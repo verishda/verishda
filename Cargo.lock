@@ -4972,6 +4972,7 @@ dependencies = [
 [[package]]
 name = "progenitor"
 version = "0.8.0"
+source = "git+https://github.com/upachler/progenitor.git?branch=feature/post-hook-async#43885de0f6102daa971b907a6544ff1ab99f067d"
 dependencies = [
  "progenitor-client",
  "progenitor-impl",
@@ -4981,6 +4982,7 @@ dependencies = [
 [[package]]
 name = "progenitor-client"
 version = "0.8.0"
+source = "git+https://github.com/upachler/progenitor.git?branch=feature/post-hook-async#43885de0f6102daa971b907a6544ff1ab99f067d"
 dependencies = [
  "bytes",
  "futures-core",
@@ -4994,6 +4996,7 @@ dependencies = [
 [[package]]
 name = "progenitor-impl"
 version = "0.8.0"
+source = "git+https://github.com/upachler/progenitor.git?branch=feature/post-hook-async#43885de0f6102daa971b907a6544ff1ab99f067d"
 dependencies = [
  "heck 0.5.0",
  "http 1.1.0",
@@ -5014,6 +5017,7 @@ dependencies = [
 [[package]]
 name = "progenitor-macro"
 version = "0.8.0"
+source = "git+https://github.com/upachler/progenitor.git?branch=feature/post-hook-async#43885de0f6102daa971b907a6544ff1ab99f067d"
 dependencies = [
  "openapiv3",
  "proc-macro2",
@@ -7943,6 +7947,7 @@ dependencies = [
  "embed-manifest",
  "embed-resource",
  "futures",
+ "hyper-util",
  "json",
  "log",
  "objc2",

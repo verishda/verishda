@@ -14,7 +14,7 @@ postgres-protocol = {git="https://github.com/sfackler/rust-postgres.git", branch
 tokio-postgres = {git="https://github.com/sfackler/rust-postgres.git", branch="master"}
 
 [workspace.dependencies]
-progenitor = {path="../progenitor/progenitor"}
-progenitor-client = {path="../progenitor/progenitor-client"}
+progenitor = {git="https://github.com/upachler/progenitor.git", branch="feature/post-hook-async"}
+progenitor-client = {git="https://github.com/upachler/progenitor.git", branch="feature/post-hook-async"}
 reqwest = {version="0.12", features = ["json", "stream"]}
 chrono = "0.4"

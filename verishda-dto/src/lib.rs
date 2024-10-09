@@ -2,7 +2,7 @@ use proc_macro2::TokenStream;
 
 
  
-pub fn run_progenitor(openapi_path: &str, inner_type: TokenStream) {
+pub fn run_progenitor(openapi_path: &str, inner_type: TokenStream, post_hook: Option<TokenStream>) {
     let src = openapi_path;
     println!("cargo:rerun-if-changed={src}");
     let file = std::fs::File::open(src).unwrap();
@@ -10,6 +10,9 @@ pub fn run_progenitor(openapi_path: &str, inner_type: TokenStream) {
 
     let mut settings = progenitor::GenerationSettings::new();
     settings.with_inner_type(inner_type);
+    if let Some(hook) = post_hook {
+        settings.with_post_hook_async(hook);
+    }
 
     let mut generator = progenitor::Generator::new(&settings);
 
