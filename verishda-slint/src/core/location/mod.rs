@@ -94,7 +94,7 @@ impl GeoCircle {
 pub(crate) trait PollingLocator {
     fn new() -> Self;
 
-    async fn poll_location(&self) -> Location;
+    async fn poll_location(&self) -> anyhow::Result<Location>;
 }
 
 #[cfg(target_os="windows")]
@@ -136,9 +136,13 @@ impl LocationHandler {
 
     pub async fn poll(handler: Arc<Mutex<Self>>) {
         let mut handler = handler.lock().await;
-        let location = handler.polling_locator.poll_location().await;
+        match handler.polling_locator.poll_location().await {
+            Ok(location) => {
+                handler.check_geofences(&location);
+            }
+            Err(error) => log::error!("unable to fetch location: {error}"),
+        }
 
-        handler.check_geofences(&location);
         let sleep_duration = std::time::Duration::from_secs(handler.poll_interval_seconds as u64);
         drop(handler); // dropping handler guard to release lock, avoiding deadlock
 
