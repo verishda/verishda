@@ -28,17 +28,14 @@ impl super::PollingLocator for WindowsPollingLocator {
 
     // https://learn.microsoft.com/en-us/previous-versions/windows/apps/dn263199(v=win.10)
     // https://docs.microsoft.com/en-us/uwp/api/windows.devices.geolocation.geofencing.geofencemonitor
-    async fn poll_location(&self) -> Location {
-        let pos = self.loc.GetGeopositionAsync().unwrap().await.unwrap();
+    async fn poll_location(&self) -> anyhow::Result<Location> {
+        let pos = self.loc.GetGeopositionAsync()?.await?;
         let location = Location::from(
-            &pos.Coordinate()
-                .unwrap()
-                .Point()
-                .unwrap()
-                .Position()
-                .unwrap(),
+            &pos.Coordinate()?
+                .Point()?
+                .Position()?,
         );
         log::debug!("location: {location:?}");
-        location
+        Ok(location)
     }
 }

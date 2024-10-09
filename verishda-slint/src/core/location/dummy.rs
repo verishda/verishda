@@ -8,8 +8,8 @@ impl super::PollingLocator for DummyPollingLocator {
         Self
     }
 
-    async fn poll_location(&self) -> super::Location {
-        Location::default()
+    async fn poll_location(&self) -> anyhow::Result<super::Location> {
+        Ok(Location::default())
     }
 
 }
