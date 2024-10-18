@@ -32,7 +32,7 @@ impl ClientInner {
 
                 if connection_error {
                     log::info!("DISCONNECTED");
-                    self.cmd_tx.send(super::AppCoreCommand::Logout).await.unwrap();
+                    self.cmd_tx.send(super::AppCoreCommand::StartTokenRefresh).await.unwrap();
                 }
             }
         }
