@@ -2,19 +2,20 @@ use std::{sync::Arc, time::{Duration, Instant}};
 
 use chrono::Days;
 use futures::prelude::*;
-use openidconnect::{core::{CoreAuthenticationFlow, CoreClient, CoreProviderMetadata}, reqwest::async_http_client, AuthorizationCode, ClientId, CsrfToken, IssuerUrl, Nonce, OAuth2TokenResponse, PkceCodeChallenge, PkceCodeVerifier, RedirectUrl, RefreshToken, Scope};
+use openidconnect::{core::{CoreAuthenticationFlow, CoreClient, CoreProviderMetadata}, reqwest::async_http_client, AuthorizationCode, ClientId, CsrfToken, ExtraTokenFields, IssuerUrl, Nonce, OAuth2TokenResponse, PkceCodeChallenge, PkceCodeVerifier, RedirectUrl, RefreshToken, Scope, StandardTokenResponse, TokenResponse, TokenType};
 use anyhow::Result;
 
 use reqwest::header::HeaderMap;
-use tokio::sync::{mpsc::Sender, Mutex, Notify};
+use tokio::{sync::{mpsc::Sender, Mutex, Notify}, time::MissedTickBehavior};
 use url::Url;
 use log::*;
 
 use verishda_config::Config;
-use verishda_dto::{self, types::{PresenceAnnouncement, PresenceAnnouncementKind, PresenceAnnouncements}};
+use verishda_dto::types::{PresenceAnnouncement, PresenceAnnouncementKind, PresenceAnnouncements};
 use crate::core::location::Location;
 
 mod location;
+pub mod verishda_dto;
 
 #[derive(Default, Clone, Debug)]
 pub enum Announcement {
@@ -83,8 +84,10 @@ enum LoginPipeMessage {
 enum AppCoreCommand {
     AddCoreEventListener(Box<dyn Fn(CoreEvent) + Send>),
     StartLogin,
-    CancelLogin,
+    CancelCurrentOperation,
     ExchangeCodeForToken(String, PkceCodeVerifier),
+    StartTokenRefresh,
+    ReplaceCredentials(Credentials),
     Logout,
     RefreshPrecences,
     PublishAnnouncements{
@@ -168,45 +171,9 @@ impl AppCore {
                     }
                     cmd = rx.recv() => {
                         if let Some(cmd) = cmd {
-                            use AppCoreCommand::*;
-                            match cmd {
-                                AddCoreEventListener(listener) => {
-                                    app_core.add_core_event_listener(listener).await;
-                                }
-                                StartLogin => {
-                                    AppCore::start_login(&mut app_core).await.unwrap();
-                                }
-                                CancelLogin => {
-                                    app_core.login_cancel_notify.notify_waiters();
-                                }
-                                ExchangeCodeForToken(code, pkce_verifier) => {
-                                    if let Ok(()) = Self::exchange_code_for_tokens(&mut app_core, code, pkce_verifier).await {
-                                        event_tx.send(CoreEvent::LogginSuccessful).await.unwrap();
-                                    }
-                                }
-                                Logout => {
-                                    app_core.credentials = None;
-                                    app_core.core_event_tx.send(CoreEvent::LoggedOut).await.unwrap();
-                                }
-                                RefreshPrecences => {
-                                    app_core.update_own_presence().await;
-                                    app_core.refresh_presences().await;
-                                },
-                                PublishAnnouncements{site_id, announcements} => {
-                                    app_core.publish_own_announcements(site_id, announcements).await;
-                                },
-                                ChangeFavorite{user_id, favorite} => {
-                                    app_core.publish_favorite_change(user_id, favorite).await;
-                                }
-                                Quit => {
-                                    break;
-                                }
-                                SetPersonFilter(filter) => {
-                                    app_core.set_filter(filter).await;
-                                }
-                                SetSite{site_id} => {
-                                    app_core.set_site_impl(&site_id).await;
-                                }
+                            let quit = Self::process_command(&mut app_core, cmd).await;
+                            if quit {
+                                break;
                             }
                         }
                    }
@@ -216,6 +183,60 @@ impl AppCore {
 
 
         core_ref
+    }
+
+    async fn process_command(app_core: &mut Self, cmd: AppCoreCommand) -> bool {
+        use AppCoreCommand::*;
+        match cmd {
+            AddCoreEventListener(listener) => {
+                app_core.add_core_event_listener(listener).await;
+            }
+            StartLogin => {
+                AppCore::start_login(app_core).await.unwrap();
+            }
+            CancelCurrentOperation => {
+                app_core.login_cancel_notify.notify_waiters();
+            }
+            ExchangeCodeForToken(code, pkce_verifier) => {
+                if let Ok(()) = Self::exchange_code_for_tokens(app_core, code, pkce_verifier).await {
+                    app_core.core_event_tx.send(CoreEvent::LogginSuccessful).await.unwrap();
+                }
+            }
+            ReplaceCredentials(credentials) => {
+                app_core.credentials = Some(credentials);
+                app_core.broadcast_core_event(CoreEvent::LogginSuccessful).await;
+            }
+            StartTokenRefresh => {
+                if let Err(error) = Self::attempt_reconnect(app_core).await {
+                    log::error!("unforeseen problem during token refresh: {error}");
+                }
+            },
+            Logout => {
+                app_core.credentials = None;
+                app_core.core_event_tx.send(CoreEvent::LoggedOut).await.unwrap();
+            }
+            RefreshPrecences => {
+                app_core.update_own_presence().await;
+                app_core.refresh_presences().await;
+            },
+            PublishAnnouncements{site_id, announcements} => {
+                app_core.publish_own_announcements(site_id, announcements).await;
+            },
+            ChangeFavorite{user_id, favorite} => {
+                app_core.publish_favorite_change(user_id, favorite).await;
+            }
+            Quit => {
+                return true;
+            }
+            SetPersonFilter(filter) => {
+                app_core.set_filter(filter).await;
+            }
+            SetSite{site_id} => {
+                app_core.set_site_impl(&site_id).await;
+            }
+        }
+
+        false
     }
 }
 
@@ -255,7 +276,7 @@ impl AppCoreRef {
     }
 
     pub fn cancel_login(&self) {
-        self.command_tx.blocking_send(AppCoreCommand::CancelLogin).unwrap();
+        self.command_tx.blocking_send(AppCoreCommand::CancelCurrentOperation).unwrap();
     }
 
     pub fn on_core_event<F>(&self, f: F)
@@ -268,6 +289,7 @@ impl AppCoreRef {
 }
 
 impl AppCore {
+    const RECONNECT_RETRY_INTERVAL: Duration = Duration::from_secs(10);
 
     async fn set_site_impl(&mut self, site_id: &str) {
         let new_site = if site_id.is_empty() {
@@ -282,35 +304,49 @@ impl AppCore {
         }
     }
 
+    async fn run_token_refresh(&mut self) -> Result<()> {
+        let credentials;
+        
+        if let Some(c) = self.credentials.as_mut() {
+            credentials = c;
+        } else {
+            return Err(anyhow::anyhow!("no refresh token available"));
+        }
+
+        let refresh_token = RefreshToken::new(credentials.refresh_token.clone());
+        match self.oidc_client.as_ref().unwrap().exchange_refresh_token(&refresh_token)
+            .request_async(async_http_client)
+            .await 
+        {
+            Ok(resp) => {
+                credentials.access_token = resp.access_token().secret().to_string();
+                credentials.expires_at = Self::expires_at_from_now(resp.expires_in());
+                return Ok(());
+            }
+            Err(e) => {
+                self.credentials = None;
+                self.broadcast_core_event(CoreEvent::LoggedOut).await;
+                return Err(anyhow::anyhow!(e));
+            }
+        }
+    }
+
     async fn create_client(&mut self) -> Result<verishda_dto::Client> {
-        if let Some(credentials) = &mut self.credentials {
+        if let Some(credentials) = &self.credentials {
             if Instant::now().cmp(&credentials.expires_at) == std::cmp::Ordering::Greater{
-                let refresh_token = RefreshToken::new(credentials.refresh_token.clone());
-                match self.oidc_client.as_ref().unwrap().exchange_refresh_token(&refresh_token)
-                    .request_async(async_http_client)
-                    .await 
-                {
-                    Ok(resp) => {
-                        credentials.access_token = resp.access_token().secret().to_string();
-                        credentials.expires_at = Self::expires_at_from_now(resp.expires_in());
-                    }
-                    Err(e) => {
-                        self.credentials = None;
-                        self.broadcast_core_event(CoreEvent::LoggedOut).await;
-                        return Err(anyhow::anyhow!(e));
-                    }
-                }
+                self.run_token_refresh().await?;
             }
 
             let mut headers = HeaderMap::new();
-            let access_token = &credentials.access_token;
+            let access_token = &self.credentials.as_ref().unwrap().access_token;
             headers.insert("Authorization", format!("Bearer {access_token}").parse().unwrap());
             let inner = reqwest::Client::builder()
                 .default_headers(headers)
                 .connection_verbose(true)
                 .build()
                 .expect("client creation failed");
-            let client = verishda_dto::Client::new_with_client(&self.api_base_url(), inner);
+            let client_inner = verishda_dto::ClientInner::new(self.core_cmd_tx.clone());
+            let client = verishda_dto::Client::new_with_client(&self.api_base_url(), inner, client_inner);
             Ok(client)
         } else {
             Err(anyhow::anyhow!("Not logged in"))
@@ -503,6 +539,79 @@ impl AppCore {
         Ok(())
     }
 
+    async fn attempt_reconnect(app_core: &mut AppCore) -> Result<()> {
+        // FIXME: need to shut down location manager
+        if let Some(credentials) = &app_core.credentials {
+            app_core.broadcast_core_event(CoreEvent::LoggingIn).await;
+            let refresh_token = RefreshToken::new(credentials.refresh_token.clone());
+            let oidc_client = app_core.oidc_client.as_ref().unwrap().clone();
+            let cmd_tx = app_core.core_cmd_tx.clone();
+
+            let shutdown_notify = app_core.login_cancel_notify.clone();
+
+            tokio::spawn(async move {
+
+                // set retry intverval so that:
+                // we retry connecting every couple of seconds
+                // we skip missed ticks in case program was paused, either by the harware
+                // (laptop) going to sleep, or program begin suspeded in the debugger.
+                let mut retry_interval = tokio::time::interval(Self::RECONNECT_RETRY_INTERVAL);
+                retry_interval.set_missed_tick_behavior(MissedTickBehavior::Skip);
+
+                loop {
+                    log::debug!("attempting token refresh");
+
+                    let refresh_result = oidc_client
+                    .exchange_refresh_token(&refresh_token)
+                    .request_async(async_http_client).await;
+                
+                    match refresh_result {
+                        Ok(token_response) => {
+                            let r = refresh_token.secret().clone();
+                            let c = Self::credentials_from_token_response_now(&token_response, Some(r));
+                            cmd_tx.send(AppCoreCommand::ReplaceCredentials(c)).await.unwrap();
+                            log::debug!("token refresh succeeded");
+                            break;
+                        }
+                        Err(error) =>  {
+                            let refresh_token_invalid;
+                            match error {
+                                openidconnect::RequestTokenError::ServerResponse(server_response) => {
+                                    match server_response.error() {
+                                        openidconnect::core::CoreErrorResponseType::InvalidGrant => {
+                                            refresh_token_invalid = true
+                                        }
+                                        _ => refresh_token_invalid = false
+                                    }
+                                }
+                                _ => refresh_token_invalid = false
+                            };
+
+                            if refresh_token_invalid {
+                                // abort retry
+                                log::debug!("token refresh failed");
+                                cmd_tx.send(AppCoreCommand::Logout).await.unwrap();
+                                break;
+                            } else {
+                                log::debug!("error while token refresh, retrying...");
+                                tokio::select! {
+                                    _ = shutdown_notify.notified() => {
+                                        cmd_tx.send(AppCoreCommand::Logout).await.unwrap();
+                                        break
+                                    }
+                                    _ = retry_interval.tick() => continue,
+                                }
+                            }
+                        }   
+                    }             
+                };
+            });
+        } else {
+            return Err(anyhow::anyhow!("no credentials"))
+        }
+        Ok(())
+    }
+
     fn start_login_websocket(app_core: &mut AppCore, shutdown_notify: Arc<Notify>) -> Result<Url> {
         let (auth_url, pkce_verifier, csrf_token) = {
             app_core.authorization_url()
@@ -553,6 +662,25 @@ impl AppCore {
         Ok(auth_url)
     }
 
+    fn credentials_from_token_response_now<EF,TT>(token_response: &StandardTokenResponse<EF,TT>, fallback_refresh_token: Option<String>)
+    -> Credentials
+    where 
+    EF: ExtraTokenFields,
+    TT: TokenType,
+    {
+        let refresh_token = token_response
+        .refresh_token()
+        .map(|r|r.secret().clone())
+        .or(fallback_refresh_token)
+        .expect("either a refresh_token must be present in the response, or a fallback token must be given");
+
+        Credentials {
+            access_token: token_response.access_token().secret().clone(),
+            refresh_token,
+            expires_at: Self::expires_at_from_now(token_response.expires_in())
+        }
+    }
+
     fn expires_at_from_now(expires_in: Option<Duration>) -> Instant {
         let expires_in = expires_in
         .unwrap_or(Duration::from_secs(60));
@@ -569,13 +697,7 @@ impl AppCore {
             .set_pkce_verifier(pkce_verifier)
             .request_async(async_http_client)
             .await?;
-        let access_token = token_response.access_token().secret().to_string();
-        let refresh_token = token_response.refresh_token().unwrap().secret().to_string();
-        let credentials = Credentials {
-            access_token,
-            refresh_token,
-            expires_at: Self::expires_at_from_now(token_response.expires_in()),
-        };
+        let credentials = Self::credentials_from_token_response_now(&token_response, None);
 
         log::info!("Exchanged into access_token {credentials:?}");
         app_core.credentials = Some(credentials);

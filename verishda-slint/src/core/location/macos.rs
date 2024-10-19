@@ -113,10 +113,10 @@ impl super::PollingLocator for MacOsPollingLocator {
         loc
     }
 
-    async fn poll_location(&self) -> super::Location {
+    async fn poll_location(&self) -> anyhow::Result<super::Location> {
         let loc = self.current_location.read().await.clone();
         log::debug!("read location {loc:?}");
-        loc
+        Ok(loc)
     }
 }
 

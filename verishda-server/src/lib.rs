@@ -47,6 +47,7 @@ mod oidc_cache;
 mod error;
 mod scheme;
 mod datamodel;
+mod verishda_dto;
 
 refinery::embed_migrations!("migrations");
 
