@@ -2,11 +2,11 @@ use std::{sync::Arc, time::{Duration, Instant}};
 
 use chrono::Days;
 use futures::prelude::*;
-use openidconnect::{core::{CoreAuthenticationFlow, CoreClient, CoreProviderMetadata}, reqwest::async_http_client, AuthorizationCode, ClientId, CsrfToken, IssuerUrl, Nonce, OAuth2TokenResponse, PkceCodeChallenge, PkceCodeVerifier, RedirectUrl, RefreshToken, Scope};
+use openidconnect::{core::{CoreAuthenticationFlow, CoreClient, CoreProviderMetadata}, reqwest::async_http_client, AuthorizationCode, ClientId, CsrfToken, ExtraTokenFields, IssuerUrl, Nonce, OAuth2TokenResponse, PkceCodeChallenge, PkceCodeVerifier, RedirectUrl, RefreshToken, Scope, StandardTokenResponse, TokenResponse, TokenType};
 use anyhow::Result;
 
 use reqwest::header::HeaderMap;
-use tokio::sync::{mpsc::Sender, Mutex, Notify};
+use tokio::{sync::{mpsc::Sender, Mutex, Notify}, time::MissedTickBehavior};
 use url::Url;
 use log::*;
 
@@ -87,7 +87,7 @@ enum AppCoreCommand {
     CancelCurrentOperation,
     ExchangeCodeForToken(String, PkceCodeVerifier),
     StartTokenRefresh,
-    ReplaceAccessToken(String),
+    ReplaceCredentials(Credentials),
     Logout,
     RefreshPrecences,
     PublishAnnouncements{
@@ -202,8 +202,9 @@ impl AppCore {
                     app_core.core_event_tx.send(CoreEvent::LogginSuccessful).await.unwrap();
                 }
             }
-            ReplaceAccessToken(access_token) => {
-                app_core.credentials.as_mut().unwrap().access_token = access_token;
+            ReplaceCredentials(credentials) => {
+                app_core.credentials = Some(credentials);
+                app_core.broadcast_core_event(CoreEvent::LogginSuccessful).await;
             }
             StartTokenRefresh => {
                 if let Err(error) = Self::attempt_reconnect(app_core).await {
@@ -550,7 +551,12 @@ impl AppCore {
 
             tokio::spawn(async move {
 
+                // set retry intverval so that:
+                // we retry connecting every couple of seconds
+                // we skip missed ticks in case program was paused, either by the harware
+                // (laptop) going to sleep, or program begin suspeded in the debugger.
                 let mut retry_interval = tokio::time::interval(Self::RECONNECT_RETRY_INTERVAL);
+                retry_interval.set_missed_tick_behavior(MissedTickBehavior::Skip);
 
                 loop {
                     log::debug!("attempting token refresh");
@@ -561,9 +567,10 @@ impl AppCore {
                 
                     match refresh_result {
                         Ok(token_response) => {
-                            let t = token_response.access_token().secret().clone();
-                            cmd_tx.send(AppCoreCommand::ReplaceAccessToken(t)).await.unwrap();
-                            cmd_tx.send(AppCoreCommand::StartLogin).await.unwrap();
+                            let r = refresh_token.secret().clone();
+                            let c = Self::credentials_from_token_response_now(&token_response, Some(r));
+                            cmd_tx.send(AppCoreCommand::ReplaceCredentials(c)).await.unwrap();
+                            log::debug!("token refresh succeeded");
                             break;
                         }
                         Err(error) =>  {
@@ -582,9 +589,11 @@ impl AppCore {
 
                             if refresh_token_invalid {
                                 // abort retry
+                                log::debug!("token refresh failed");
                                 cmd_tx.send(AppCoreCommand::Logout).await.unwrap();
                                 break;
                             } else {
+                                log::debug!("error while token refresh, retrying...");
                                 tokio::select! {
                                     _ = shutdown_notify.notified() => {
                                         cmd_tx.send(AppCoreCommand::Logout).await.unwrap();
@@ -653,6 +662,25 @@ impl AppCore {
         Ok(auth_url)
     }
 
+    fn credentials_from_token_response_now<EF,TT>(token_response: &StandardTokenResponse<EF,TT>, fallback_refresh_token: Option<String>)
+    -> Credentials
+    where 
+    EF: ExtraTokenFields,
+    TT: TokenType,
+    {
+        let refresh_token = token_response
+        .refresh_token()
+        .map(|r|r.secret().clone())
+        .or(fallback_refresh_token)
+        .expect("either a refresh_token must be present in the response, or a fallback token must be given");
+
+        Credentials {
+            access_token: token_response.access_token().secret().clone(),
+            refresh_token,
+            expires_at: Self::expires_at_from_now(token_response.expires_in())
+        }
+    }
+
     fn expires_at_from_now(expires_in: Option<Duration>) -> Instant {
         let expires_in = expires_in
         .unwrap_or(Duration::from_secs(60));
@@ -669,13 +697,7 @@ impl AppCore {
             .set_pkce_verifier(pkce_verifier)
             .request_async(async_http_client)
             .await?;
-        let access_token = token_response.access_token().secret().to_string();
-        let refresh_token = token_response.refresh_token().unwrap().secret().to_string();
-        let credentials = Credentials {
-            access_token,
-            refresh_token,
-            expires_at: Self::expires_at_from_now(token_response.expires_in()),
-        };
+        let credentials = Self::credentials_from_token_response_now(&token_response, None);
 
         log::info!("Exchanged into access_token {credentials:?}");
         app_core.credentials = Some(credentials);
