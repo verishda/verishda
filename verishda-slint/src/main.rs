@@ -3,7 +3,7 @@
 use clap::Parser;
 
 use chrono::{Datelike, Days};
-use verishda_dto::types::{Presence, PresenceAnnouncementKind, Site};
+use core::verishda_dto::types::{Presence, PresenceAnnouncementKind, Site};
 use std::{collections::HashMap, env};
 
 use core::{Announcement, AppCoreRef, CoreEvent, PersonFilter};
@@ -28,7 +28,9 @@ fn main() {
 
     #[cfg(not(target_os = "macos"))]
     {
+        
         simple_logger::SimpleLogger::new()
+        .with_level(log::LevelFilter::Info)
         .env()
         .init()
         .unwrap();

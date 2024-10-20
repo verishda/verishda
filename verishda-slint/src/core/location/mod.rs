@@ -94,7 +94,7 @@ impl GeoCircle {
 pub(crate) trait PollingLocator {
     fn new() -> Self;
 
-    async fn poll_location(&self) -> Location;
+    async fn poll_location(&self) -> anyhow::Result<Location>;
 }
 
 #[cfg(target_os="windows")]
@@ -110,7 +110,7 @@ pub(super) struct LocationHandler {
     shapes: std::collections::HashMap<String, GeoCircle>,
     in_fences: std::collections::HashSet<String>,
     task_handle: Option<tokio::task::JoinHandle<()>>,
-    terminate_notify: tokio::sync::Notify,
+    terminate_notify: Arc<tokio::sync::Notify>,
 }
 
 impl LocationHandler {
@@ -122,7 +122,7 @@ impl LocationHandler {
             shapes: HashMap::new(),
             in_fences: HashSet::new(),
             task_handle: None,            
-            terminate_notify: tokio::sync::Notify::new(),
+            terminate_notify: Arc::new(tokio::sync::Notify::new()),
         }))
     }
 
@@ -134,19 +134,33 @@ impl LocationHandler {
             return;
         }
 
+        let terminate_notify = handler_guard.terminate_notify.clone();
         let handler_clone = handler.clone();
         let handle = tokio::spawn(async move {
             let mut poll_interval = tokio::time::interval(poll_duration);
             poll_interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+            
             loop {
                 // request locations from location handler
+                log::trace!("polling location handler");
                 LocationHandler::poll(handler_clone.clone()).await;
 
-                // sleep until next iteration
-                poll_interval.tick().await;
+                tokio::select! {
+                    // sleep until next iteration
+                    _ = poll_interval.tick() => {
+                        continue
+                    }
+                    // check if host wants us to terminate
+                    _ = terminate_notify.notified() => {
+                        log::debug!("terminate request received, terminating...");
+                        break
+                    }
+                }
             }
         });
         handler_guard.task_handle = Some(handle);
+
+        log::info!("location handler started");
     }
 
     pub async fn stop(handler: Arc<Mutex<Self>>) {
@@ -163,14 +177,18 @@ impl LocationHandler {
             }
         }
         handler_guard.task_handle = None;
+        log::info!("location handler stopped");
     }
 
 
     pub async fn poll(handler: Arc<Mutex<Self>>) {
         let mut handler = handler.lock().await;
-        let location = handler.polling_locator.poll_location().await;
-
-        handler.check_geofences(&location);
+        match handler.polling_locator.poll_location().await {
+            Ok(location) => {
+                handler.check_geofences(&location);
+            }
+            Err(error) => log::error!("unable to fetch location: {error}"),
+        }
     }
 
     fn check_geofences(&mut self, location: &Location) {

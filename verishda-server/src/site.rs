@@ -4,7 +4,7 @@ use anyhow::{anyhow,Result};
 use chrono::{NaiveDate, NaiveDateTime, NaiveTime, TimeDelta, Utc};
 use sqlx::{Connection, Postgres, PgConnection, postgres::PgRow, Row};
 
-use verishda_dto::types::{Presence, PresenceAnnouncement, PresenceAnnouncementKind, Site};
+use crate::verishda_dto::types::{Presence, PresenceAnnouncement, PresenceAnnouncementKind, Site};
 
 pub(super) async fn get_sites(pg: &mut PgConnection) -> Result<Vec<Site>> 
 where Result<Vec<Site>>: Send + Sync
