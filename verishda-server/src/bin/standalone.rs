@@ -12,7 +12,7 @@ async fn main(){
         Box::new(EnvConfig::from_env()),
         Box::new(default_config())
     );
-    verishda::init_logging(config.clone());
+    verishda::init_logging(&config);
 
     log::debug!("connecting to database...");
     let pg_address = std::env::var("PG_ADDRESS")

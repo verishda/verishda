@@ -29,6 +29,10 @@ async fn axum(
         Box::new(shuttle_config), 
         Box::new(default_config())
     );
+    
+    // NOTE: We do not initialize logging on shuttle, because the
+    // shuttle runtime itself does this for us.
+    log::info!("starting up verishda on shuttle");
 
     let pool = verishda::connect_db(&pg_url).await?;
     Ok(verishda::build_router(pool, config).into())

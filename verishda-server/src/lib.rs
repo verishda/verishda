@@ -70,7 +70,7 @@ impl Clone for VerishdaState {
     }
 }
 
-pub fn init_logging(cfg: impl verishda_config::Config) {
+pub fn init_logging(cfg: &impl verishda_config::Config) {
     let rust_log_config = cfg.get("RUST_LOG").ok();
     let mut logger_builder = env_logger::builder();
     if let Some(rust_log) = rust_log_config {
