@@ -12,4 +12,7 @@ impl super::PollingLocator for DummyPollingLocator {
         Ok(Location::default())
     }
 
+    fn start(&mut self) {}
+
+    fn stop(&mut self) {}
 }

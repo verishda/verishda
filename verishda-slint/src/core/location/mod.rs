@@ -94,6 +94,8 @@ impl GeoCircle {
 pub(crate) trait PollingLocator {
     fn new() -> Self;
 
+    fn start(&mut self);
+    fn stop(&mut self);
     async fn poll_location(&self) -> anyhow::Result<Location>;
 }
 
@@ -133,6 +135,7 @@ impl LocationHandler {
             log::error!("attempted starting PollingLocator when locator is already running");
             return;
         }
+        handler_guard.polling_locator.start();
 
         let terminate_notify = handler_guard.terminate_notify.clone();
         let handler_clone = handler.clone();
@@ -166,8 +169,9 @@ impl LocationHandler {
     pub async fn stop(handler: Arc<Mutex<Self>>) {
         let mut handler_guard = handler.lock().await;
         handler_guard.terminate_notify.notify_waiters();
+        handler_guard.polling_locator.stop();
         match handler_guard.task_handle.as_mut() {
-            Some(task_handle) => {                
+            Some(task_handle) => {  
                 if let Err(e) = task_handle.await {
                     log::error!("PollingLocator task terminated with error {e}");
                 }
