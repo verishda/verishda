@@ -1,4 +1,4 @@
-use std::{collections::{HashMap, HashSet}, sync::Arc};
+use std::{collections::{HashMap, HashSet}, sync::Arc, time::Duration};
 
 use anyhow::Result;
 use tokio::sync::Mutex;
@@ -108,7 +108,6 @@ type PollingLocatorImpl = dummy::DummyPollingLocator;
 pub(super) struct LocationHandler {
     polling_locator: PollingLocatorImpl,
     shapes: std::collections::HashMap<String, GeoCircle>,
-    poll_interval_seconds: u32,
     in_fences: std::collections::HashSet<String>,
 }
 
@@ -118,15 +117,20 @@ impl LocationHandler {
         let handler = Arc::new(Mutex::new(Self {
             
             polling_locator: PollingLocatorImpl::new(),
-            poll_interval_seconds: 5,
             shapes: HashMap::new(),
             in_fences: HashSet::new(),
         }));
 
         let handler_clone = handler.clone();
         tokio::spawn(async move {
+            let mut poll_interval = tokio::time::interval(Duration::from_secs(5));
+            poll_interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
             loop {
+                // request locations from location handler
                 LocationHandler::poll(handler_clone.clone()).await;
+
+                // sleep until next iteration
+                poll_interval.tick().await;
             }
         });
 
@@ -139,11 +143,6 @@ impl LocationHandler {
         let location = handler.polling_locator.poll_location().await;
 
         handler.check_geofences(&location);
-        let sleep_duration = std::time::Duration::from_secs(handler.poll_interval_seconds as u64);
-        drop(handler); // dropping handler guard to release lock, avoiding deadlock
-
-        // sleep until next iteration
-        tokio::time::sleep(sleep_duration).await;
     }
 
     fn check_geofences(&mut self, location: &Location) {
