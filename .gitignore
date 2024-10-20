@@ -1,4 +1,6 @@
 target/
 .spin/
 .env
-Secrets.dev.toml
+Secrets.dev.toml/target
+.shuttle*
+Secrets*.toml
