@@ -2,6 +2,7 @@ use std::{sync::{mpsc::RecvError, Arc}, time::{Duration, Instant}};
 
 use chrono::Days;
 use futures::{io::Close, prelude::*};
+use location::LocationHandler;
 use openidconnect::{core::{CoreAuthenticationFlow, CoreClient, CoreProviderMetadata}, reqwest::async_http_client, AuthorizationCode, ClientId, CsrfToken, IssuerUrl, Nonce, OAuth2TokenResponse, PkceCodeChallenge, PkceCodeVerifier, RedirectUrl, RefreshToken, Scope};
 use anyhow::Result;
 
@@ -70,6 +71,7 @@ where Self: Send + Sync
     LoggedOut,
     SitesUpdated{sites: Vec<verishda_dto::types::Site>, selected_index: Option<usize>},
     PresencesChanged(Vec<verishda_dto::types::Presence>),
+    Terminating,
 }
 
 #[derive(serde::Serialize, serde::Deserialize)]
@@ -119,6 +121,21 @@ impl AppCore {
             filter: PersonFilter::default(),
         };
 
+        // spawn AppCore event observer task, handling starting and stopping the
+        // LocationHandler
+        let location_handler = app_core.location_handler.clone();
+        let mut event_rx = event_tx.subscribe();
+        tokio::spawn(async move {
+            while let Ok(event) = event_rx.recv().await {
+                match event {
+                    CoreEvent::LoggingIn => LocationHandler::start(location_handler.clone(), Duration::from_secs(5)).await,
+                    CoreEvent::LoggedOut | CoreEvent::Terminating => LocationHandler::stop(location_handler.clone()).await,
+                    _ => ()
+                }
+            }
+        });
+
+        // spawn AppCore background command handler task
         tokio::spawn(async move {
 
             log::info!("AppCore background task started");
@@ -178,6 +195,7 @@ impl AppCore {
                                     app_core.publish_favorite_change(user_id, favorite).await;
                                 }
                                 Quit => {
+                                    app_core.broadcast_core_event(CoreEvent::Terminating);
                                     break;
                                 }
                                 SetPersonFilter(filter) => {
@@ -243,7 +261,7 @@ impl AppCoreRef {
         let mut event_rx = self.event_tx.subscribe();
         tokio::spawn(async move {
             while let Ok(event) = event_rx.recv().await {
-                f(event)
+                f(event);
             }
         });
     }

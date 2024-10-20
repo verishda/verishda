@@ -168,6 +168,7 @@ fn process_event(app_ui: AppUI<'_>, event: CoreEvent) {
                 chrono::Local::now().weekday().num_days_from_monday() as i32;
             app_ui.set_current_day_index(current_day)
         }
+        core::CoreEvent::Terminating => ()  // no special handling for termination for now
     }
 }
 

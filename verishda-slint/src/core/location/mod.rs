@@ -109,21 +109,34 @@ pub(super) struct LocationHandler {
     polling_locator: PollingLocatorImpl,
     shapes: std::collections::HashMap<String, GeoCircle>,
     in_fences: std::collections::HashSet<String>,
+    task_handle: Option<tokio::task::JoinHandle<()>>,
+    terminate_notify: tokio::sync::Notify,
 }
 
 impl LocationHandler {
     
     pub fn new() -> Arc<Mutex<LocationHandler>> {
-        let handler = Arc::new(Mutex::new(Self {
+        Arc::new(Mutex::new(Self {
             
             polling_locator: PollingLocatorImpl::new(),
             shapes: HashMap::new(),
             in_fences: HashSet::new(),
-        }));
+            task_handle: None,            
+            terminate_notify: tokio::sync::Notify::new(),
+        }))
+    }
+
+    pub async fn start(handler: Arc<Mutex<Self>>, poll_duration: Duration) {
+        let mut handler_guard = handler.lock().await;
+
+        if handler_guard.task_handle.is_some() {
+            log::error!("attempted starting PollingLocator when locator is already running");
+            return;
+        }
 
         let handler_clone = handler.clone();
-        tokio::spawn(async move {
-            let mut poll_interval = tokio::time::interval(Duration::from_secs(5));
+        let handle = tokio::spawn(async move {
+            let mut poll_interval = tokio::time::interval(poll_duration);
             poll_interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
             loop {
                 // request locations from location handler
@@ -133,8 +146,23 @@ impl LocationHandler {
                 poll_interval.tick().await;
             }
         });
+        handler_guard.task_handle = Some(handle);
+    }
 
-        handler
+    pub async fn stop(handler: Arc<Mutex<Self>>) {
+        let mut handler_guard = handler.lock().await;
+        handler_guard.terminate_notify.notify_waiters();
+        match handler_guard.task_handle.as_mut() {
+            Some(task_handle) => {                
+                if let Err(e) = task_handle.await {
+                    log::error!("PollingLocator task terminated with error {e}");
+                }
+            },
+            None => {
+                log::error!("attempting to stop PollingLocator task when no task is running");
+            }
+        }
+        handler_guard.task_handle = None;
     }
 
 
