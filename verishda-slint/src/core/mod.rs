@@ -222,7 +222,7 @@ impl AppCore {
                 app_core.publish_favorite_change(user_id, favorite).await;
             }
             Quit => {
-                app_core.broadcast_core_event(CoreEvent::Terminating);
+                app_core.broadcast_core_event(CoreEvent::Terminating).await;
                 return true;
             }
             SetPersonFilter(filter) => {
