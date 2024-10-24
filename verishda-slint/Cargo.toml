@@ -13,7 +13,7 @@ identifier = "name.pachler.verishda"
 icon = ["ui/icons/logo.png"]
 
 [dependencies]
-slint = "1.7"
+slint = "1.8"
 anyhow = "1.0"
 tokio = { version = "1.36.0", features = ["full"] }
 openidconnect = "3.5.0"
@@ -45,7 +45,7 @@ objc2-foundation = "0.2.2"
 
 [build-dependencies]
 verishda-dto = {path="../verishda-dto"}
-slint-build = "1.7"
+slint-build = "1.8"
 quote = "1.0"
 embed-manifest = "1.4.0"
 embed-resource = "2.4.2"

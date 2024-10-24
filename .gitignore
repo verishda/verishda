@@ -4,3 +4,4 @@ target/
 Secrets.dev.toml/target
 .shuttle*
 Secrets*.toml
+.idea
