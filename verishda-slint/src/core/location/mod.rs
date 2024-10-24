@@ -1,4 +1,4 @@
-use std::{collections::{HashMap, HashSet}, sync::Arc};
+use std::{collections::{HashMap, HashSet}, sync::Arc, time::Duration};
 
 use anyhow::Result;
 use tokio::sync::Mutex;
@@ -94,6 +94,8 @@ impl GeoCircle {
 pub(crate) trait PollingLocator {
     fn new() -> Self;
 
+    fn start(&mut self);
+    fn stop(&mut self);
     async fn poll_location(&self) -> anyhow::Result<Location>;
 }
 
@@ -108,29 +110,78 @@ type PollingLocatorImpl = dummy::DummyPollingLocator;
 pub(super) struct LocationHandler {
     polling_locator: PollingLocatorImpl,
     shapes: std::collections::HashMap<String, GeoCircle>,
-    poll_interval_seconds: u32,
     in_fences: std::collections::HashSet<String>,
+    task_handle: Option<tokio::task::JoinHandle<()>>,
+    terminate_notify: Arc<tokio::sync::Notify>,
 }
 
 impl LocationHandler {
     
     pub fn new() -> Arc<Mutex<LocationHandler>> {
-        let handler = Arc::new(Mutex::new(Self {
+        Arc::new(Mutex::new(Self {
             
             polling_locator: PollingLocatorImpl::new(),
-            poll_interval_seconds: 5,
             shapes: HashMap::new(),
             in_fences: HashSet::new(),
-        }));
+            task_handle: None,            
+            terminate_notify: Arc::new(tokio::sync::Notify::new()),
+        }))
+    }
 
+    pub async fn start(handler: Arc<Mutex<Self>>, poll_duration: Duration) {
+        let mut handler_guard = handler.lock().await;
+
+        if handler_guard.task_handle.is_some() {
+            log::error!("attempted starting PollingLocator when locator is already running");
+            return;
+        }
+        handler_guard.polling_locator.start();
+
+        let terminate_notify = handler_guard.terminate_notify.clone();
         let handler_clone = handler.clone();
-        tokio::spawn(async move {
+        let handle = tokio::spawn(async move {
+            let mut poll_interval = tokio::time::interval(poll_duration);
+            poll_interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+            
             loop {
+                // request locations from location handler
+                log::trace!("polling location handler");
                 LocationHandler::poll(handler_clone.clone()).await;
+
+                tokio::select! {
+                    // sleep until next iteration
+                    _ = poll_interval.tick() => {
+                        continue
+                    }
+                    // check if host wants us to terminate
+                    _ = terminate_notify.notified() => {
+                        log::debug!("terminate request received, terminating...");
+                        break
+                    }
+                }
             }
         });
+        handler_guard.task_handle = Some(handle);
 
-        handler
+        log::info!("location handler started");
+    }
+
+    pub async fn stop(handler: Arc<Mutex<Self>>) {
+        let mut handler_guard = handler.lock().await;
+        handler_guard.terminate_notify.notify_waiters();
+        handler_guard.polling_locator.stop();
+        match handler_guard.task_handle.as_mut() {
+            Some(task_handle) => {  
+                if let Err(e) = task_handle.await {
+                    log::error!("PollingLocator task terminated with error {e}");
+                }
+            },
+            None => {
+                log::error!("attempting to stop PollingLocator task when no task is running");
+            }
+        }
+        handler_guard.task_handle = None;
+        log::info!("location handler stopped");
     }
 
 
@@ -142,12 +193,6 @@ impl LocationHandler {
             }
             Err(error) => log::error!("unable to fetch location: {error}"),
         }
-
-        let sleep_duration = std::time::Duration::from_secs(handler.poll_interval_seconds as u64);
-        drop(handler); // dropping handler guard to release lock, avoiding deadlock
-
-        // sleep until next iteration
-        tokio::time::sleep(sleep_duration).await;
     }
 
     fn check_geofences(&mut self, location: &Location) {

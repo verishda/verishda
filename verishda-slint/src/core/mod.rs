@@ -1,7 +1,8 @@
-use std::{sync::Arc, time::{Duration, Instant}};
+use std::{sync::{mpsc::RecvError, Arc}, time::{Duration, Instant}};
 
 use chrono::Days;
 use futures::prelude::*;
+use location::LocationHandler;
 use openidconnect::{core::{CoreAuthenticationFlow, CoreClient, CoreProviderMetadata}, reqwest::async_http_client, AuthorizationCode, ClientId, CsrfToken, ExtraTokenFields, IssuerUrl, Nonce, OAuth2TokenResponse, PkceCodeChallenge, PkceCodeVerifier, RedirectUrl, RefreshToken, Scope, StandardTokenResponse, TokenResponse, TokenType};
 use anyhow::Result;
 
@@ -45,9 +46,8 @@ pub struct AppCore {
     oidc_metadata: Option<CoreProviderMetadata>,
     oidc_client: Option<CoreClient>,
     credentials: Option<Credentials>,
-    core_event_tx: Sender<CoreEvent>,
+    core_event_tx: tokio::sync::broadcast::Sender<CoreEvent>,
     core_cmd_tx: Sender<AppCoreCommand>,
-    on_core_event: Arc<Mutex<Vec<Box<dyn Fn(CoreEvent) + Send>>>>,
     login_cancel_notify: Arc<Notify>,
 
     // filter state
@@ -58,6 +58,7 @@ pub struct AppCore {
 #[derive(Clone)]
 pub struct AppCoreRef {
     command_tx: tokio::sync::mpsc::Sender<AppCoreCommand>,
+    event_tx: tokio::sync::broadcast::Sender<CoreEvent>,
 }
 
 #[derive(Debug, Clone)]
@@ -71,6 +72,7 @@ where Self: Send + Sync
     LoggedOut,
     SitesUpdated{sites: Vec<verishda_dto::types::Site>, selected_index: Option<usize>},
     PresencesChanged(Vec<verishda_dto::types::Presence>),
+    Terminating,
 }
 
 #[derive(serde::Serialize, serde::Deserialize)]
@@ -82,7 +84,6 @@ enum LoginPipeMessage {
 }
 
 enum AppCoreCommand {
-    AddCoreEventListener(Box<dyn Fn(CoreEvent) + Send>),
     StartLogin,
     CancelCurrentOperation,
     ExchangeCodeForToken(String, PkceCodeVerifier),
@@ -108,8 +109,8 @@ enum AppCoreCommand {
 impl AppCore {
     pub fn new(config: Box<dyn Config>) -> AppCoreRef {
         let (tx, mut rx) = tokio::sync::mpsc::channel::<AppCoreCommand>(10);
-        let (event_tx, mut event_rx) = tokio::sync::mpsc::channel::<CoreEvent>(10);
-        let core_ref = AppCoreRef {command_tx: tx.clone()};
+        let (event_tx, _) = tokio::sync::broadcast::channel::<CoreEvent>(10);
+        let core_ref = AppCoreRef {command_tx: tx.clone(), event_tx: event_tx.clone()};
         let mut app_core = Self {
             config,
             location_handler: location::LocationHandler::new(),
@@ -118,29 +119,26 @@ impl AppCore {
             credentials: None,
             core_event_tx: event_tx.clone(),
             core_cmd_tx: tx,
-            on_core_event: Arc::new(Mutex::new(vec![])),
             site: None,
             login_cancel_notify: Arc::new(Notify::new()),
             filter: PersonFilter::default(),
         };
 
-        let listeners = app_core.on_core_event.clone();
-
+        // spawn AppCore event observer task, handling starting and stopping the
+        // LocationHandler
+        let location_handler = app_core.location_handler.clone();
+        let mut event_rx = event_tx.subscribe();
         tokio::spawn(async move {
-            loop {
-                let event = if let Some(event) = event_rx.recv().await {
-                    event
-                } else {
-                    break;
-                };
-                let guard = listeners.lock().await;
-                for listener in guard.iter() {
-                    listener(event.clone());
+            while let Ok(event) = event_rx.recv().await {
+                match event {
+                    CoreEvent::LogginSuccessful => LocationHandler::start(location_handler.clone(), Duration::from_secs(5)).await,
+                    CoreEvent::LoggingIn | CoreEvent::Terminating => LocationHandler::stop(location_handler.clone()).await,
+                    _ => ()
                 }
             }
-            log::info!("core event dispatcher loop terminated.");
         });
 
+        // spawn AppCore background command handler task
         tokio::spawn(async move {
 
             log::info!("AppCore background task started");
@@ -157,8 +155,9 @@ impl AppCore {
 
             // install interval timer
             let mut site_refresh_ival = tokio::time::interval(Duration::from_secs(5*60));
-            let mut presence_refresh_ival = tokio::time::interval(Duration::from_secs(1*60));
             site_refresh_ival.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+            let mut presence_refresh_ival = tokio::time::interval(Duration::from_secs(1*60));
+            presence_refresh_ival.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
             
             loop {
                 tokio::select! {
@@ -188,9 +187,6 @@ impl AppCore {
     async fn process_command(app_core: &mut Self, cmd: AppCoreCommand) -> bool {
         use AppCoreCommand::*;
         match cmd {
-            AddCoreEventListener(listener) => {
-                app_core.add_core_event_listener(listener).await;
-            }
             StartLogin => {
                 AppCore::start_login(app_core).await.unwrap();
             }
@@ -199,7 +195,7 @@ impl AppCore {
             }
             ExchangeCodeForToken(code, pkce_verifier) => {
                 if let Ok(()) = Self::exchange_code_for_tokens(app_core, code, pkce_verifier).await {
-                    app_core.core_event_tx.send(CoreEvent::LogginSuccessful).await.unwrap();
+                    app_core.broadcast_core_event(CoreEvent::LogginSuccessful).await;
                 }
             }
             ReplaceCredentials(credentials) => {
@@ -213,7 +209,7 @@ impl AppCore {
             },
             Logout => {
                 app_core.credentials = None;
-                app_core.core_event_tx.send(CoreEvent::LoggedOut).await.unwrap();
+                app_core.broadcast_core_event(CoreEvent::LoggedOut).await;
             }
             RefreshPrecences => {
                 app_core.update_own_presence().await;
@@ -226,6 +222,7 @@ impl AppCore {
                 app_core.publish_favorite_change(user_id, favorite).await;
             }
             Quit => {
+                app_core.broadcast_core_event(CoreEvent::Terminating).await;
                 return true;
             }
             SetPersonFilter(filter) => {
@@ -282,7 +279,12 @@ impl AppCoreRef {
     pub fn on_core_event<F>(&self, f: F)
     where F: Fn(CoreEvent) + Send + 'static
     {
-        self.command_tx.blocking_send(AppCoreCommand::AddCoreEventListener(Box::new(f))).unwrap();
+        let mut event_rx = self.event_tx.subscribe();
+        tokio::spawn(async move {
+            while let Ok(event) = event_rx.recv().await {
+                f(event);
+            }
+        });
     }
 
 
@@ -508,12 +510,11 @@ impl AppCore {
         }
     }
 
-    async fn add_core_event_listener(&mut self, listener: Box<dyn Fn(CoreEvent) + Send>) {
-        self.on_core_event.lock().await.push(listener);
-    }
-
     async fn broadcast_core_event(&self, event: CoreEvent) {
-        self.core_event_tx.send(event).await.unwrap();
+        self.core_event_tx.send(event).unwrap_or_else(|e|{
+            log::error!("failed to send core event {e}");
+            return 0
+        });
     }
 
     fn api_base_url(&self) -> String{

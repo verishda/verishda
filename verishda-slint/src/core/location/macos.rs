@@ -99,18 +99,47 @@ impl From<&CLLocation> for Location {
     }
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug)]
+enum ServiceCommand {
+    Start,
+    Stop,
+    Terminate,
+}
+
+#[derive(Debug)]
 pub(crate) struct MacOsPollingLocator {
     current_location: Arc<RwLock<super::Location>>,
+    cmd_tx: std::sync::mpsc::Sender<ServiceCommand>,
+}
+
+impl MacOsPollingLocator {
+    fn send_cmd(&self, cmd: ServiceCommand) {
+        self.cmd_tx.send(cmd).unwrap_or_else(|e|{
+            log::error!("failed to send service command");
+        })
+    }
 }
 
 impl super::PollingLocator for MacOsPollingLocator {
     fn new() -> Self {
-        let loc = Self::default();
+        let (cmd_tx, cmd_rx) = std::sync::mpsc::channel();
+
+        let loc = Self {
+            current_location: Arc::new(RwLock::new(Location::default())),
+            cmd_tx
+        };
         let target = loc.current_location.clone();
-        thread::spawn(||run_location_manager_loop(target));
+        thread::spawn(||run_location_manager_loop(target, cmd_rx));
 
         loc
+    }
+
+    fn start(&mut self) {
+        self.send_cmd(ServiceCommand::Start);
+    }
+
+    fn stop(&mut self) {
+        self.send_cmd(ServiceCommand::Stop);
     }
 
     async fn poll_location(&self) -> anyhow::Result<super::Location> {
@@ -149,23 +178,64 @@ unsafe fn handle_authorization_status(manager: &CLLocationManager) {
 
 }
 
-fn run_location_manager_loop(current_location: Arc<RwLock<Location>>) {
-    let location_manager;
+fn run_location_manager_loop(current_location: Arc<RwLock<Location>>, cmd_rx: std::sync::mpsc::Receiver<ServiceCommand>) {
+    let mut location_manager: Option<Retained<CLLocationManager>> = None;
+
+    log::info!("STARTING run_location_manager_loop()");
 
     let delegate = LocationDelegate::new(current_location);
     unsafe {
-        location_manager = CLLocationManager::new();
-        location_manager.setDistanceFilter(100.);
-        location_manager.setDesiredAccuracy(50.);
-        location_manager.setDelegate(Some(ProtocolObject::from_ref(&*delegate)));
-        
+        let mut suspended = true;
+
         loop {
+
+            // handle reading commands and service suspension
+            let cmd;
+            if suspended {
+                log::info!("MacOsPollingLocator suspended and waiting to be reactivated.");
+                cmd = cmd_rx.recv().ok();
+            } else {
+                cmd = cmd_rx.try_recv().ok();
+            }
+
+            if let Some(cmd) = cmd {
+                log::info!("MacOsPollingLocator received command {cmd:?}");
+                match cmd {
+                    ServiceCommand::Start => {
+                        suspended = false;
+                    }
+                    ServiceCommand::Stop => {
+                        suspended = true;
+                        continue;
+                    }
+                    ServiceCommand::Terminate => {
+                        break;
+                    }
+                }
+            }
+            
+            // make sure we have a location manager, and if not, create it.
+            // we do this on-demand here because setting the deletage
+            // will trigger the user request if they allow to get the location.
+            let lm = match location_manager.clone() {
+                Some(lm) => lm.clone(),
+                None => {
+                    let lm = CLLocationManager::new();
+                    lm.setDistanceFilter(100.);
+                    lm.setDesiredAccuracy(50.);
+                    lm.setDelegate(Some(ProtocolObject::from_ref(&*delegate)));
+                    location_manager = Some(lm.clone());
+                    lm
+                }
+            };
+                
+            // run actual polling round
             const ONE_SECOND: Duration = Duration::from_secs(1);
             let res = CFRunLoop::run_in_mode(kCFRunLoopDefaultMode, ONE_SECOND, false);
             log::info!("run loop finished with {res:?}");
             if res == CFRunLoopRunResult::Finished {
                 std::thread::sleep(ONE_SECOND);
-                location_manager.requestLocation();
+                lm.requestLocation();
             }
         }
 

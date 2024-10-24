@@ -6,7 +6,7 @@ use chrono::{Datelike, Days};
 use core::verishda_dto::types::{Presence, PresenceAnnouncementKind, Site};
 use std::{collections::HashMap, env};
 
-use core::{Announcement, AppCoreRef, PersonFilter};
+use core::{Announcement, AppCoreRef, CoreEvent, PersonFilter};
 use slint::{Model, ModelRc, VecModel, Weak};
 use verishda_config::{default_config, CompositeConfig, Config, EnvConfig};
 
@@ -117,48 +117,8 @@ fn ui_main() {
             .upgrade_in_event_loop(|main_window| {
                 let app_ui = main_window.global::<AppUI>();
 
-                match event {
-                    core::CoreEvent::InitializationFinished => 
-                        app_ui.set_state(MainWindowState::ShowingWelcomeView),
-                    core::CoreEvent::InitializationFailed =>
-                        panic!("Failed to fetch provider metadata"),
-                    core::CoreEvent::LoggingIn => 
-                        app_ui.set_state(MainWindowState::ShowingWaitingForLoginView),
-                    core::CoreEvent::LogginSuccessful => 
-                        app_ui.set_state(MainWindowState::ShowingSitePresenceView),
-                    core::CoreEvent::LoggedOut => 
-                        app_ui.set_state(MainWindowState::ShowingWelcomeView),
-                    core::CoreEvent::SitesUpdated{sites, selected_index} => {
-                        let sites_model = app_ui.get_sites();
-                        let sites_model = sites_model
-                            .as_any()
-                            .downcast_ref::<VecModel<SiteModel>>()
-                            .expect("we set VecModel<> earlier");
-
-                        let sites_vec: Vec<SiteModel> =
-                            sites.iter().map(|site| site.into()).collect();
-                    
-                        sites_model.set_vec(sites_vec);
-                        app_ui.set_selected_site_index(selected_index.map(|i|i as i32).unwrap_or(-1))
-                    }
-                    core::CoreEvent::PresencesChanged(presences) => {
-                        let persons_model = app_ui.get_persons();
-                        let persons_model = persons_model
-                            .as_any()
-                            .downcast_ref::<VecModel<PersonModel>>()
-                            .expect("we set VecModel<> earlier");
-
-                        let persons_vec: Vec<PersonModel> =
-                            presences.iter().map(to_person_model).collect();
-
-                        persons_model.set_vec(persons_vec);
-
-                        let current_day =
-                            chrono::Local::now().weekday().num_days_from_monday() as i32;
-                        app_ui.set_current_day_index(current_day)
-                    }
-                }
-            })
+                process_event(app_ui, event);
+             })
             .unwrap();
     });
 
@@ -167,6 +127,51 @@ fn ui_main() {
     slint::run_event_loop().unwrap();
 
     app_core.quit();
+}
+
+fn process_event(app_ui: AppUI<'_>, event: CoreEvent) {
+    match event {
+        core::CoreEvent::InitializationFinished => 
+            app_ui.set_state(MainWindowState::ShowingWelcomeView),
+        core::CoreEvent::InitializationFailed =>
+            panic!("Failed to fetch provider metadata"),
+        core::CoreEvent::LoggingIn => 
+            app_ui.set_state(MainWindowState::ShowingWaitingForLoginView),
+        core::CoreEvent::LogginSuccessful => 
+            app_ui.set_state(MainWindowState::ShowingSitePresenceView),
+        core::CoreEvent::LoggedOut => 
+            app_ui.set_state(MainWindowState::ShowingWelcomeView),
+        core::CoreEvent::SitesUpdated{sites, selected_index} => {
+            let sites_model = app_ui.get_sites();
+            let sites_model = sites_model
+                .as_any()
+                .downcast_ref::<VecModel<SiteModel>>()
+                .expect("we set VecModel<> earlier");
+
+            let sites_vec: Vec<SiteModel> =
+                sites.iter().map(|site| site.into()).collect();
+        
+            sites_model.set_vec(sites_vec);
+            app_ui.set_selected_site_index(selected_index.map(|i|i as i32).unwrap_or(-1))
+        }
+        core::CoreEvent::PresencesChanged(presences) => {
+            let persons_model = app_ui.get_persons();
+            let persons_model = persons_model
+                .as_any()
+                .downcast_ref::<VecModel<PersonModel>>()
+                .expect("we set VecModel<> earlier");
+
+            let persons_vec: Vec<PersonModel> =
+                presences.iter().map(to_person_model).collect();
+
+            persons_model.set_vec(persons_vec);
+
+            let current_day =
+                chrono::Local::now().weekday().num_days_from_monday() as i32;
+            app_ui.set_current_day_index(current_day)
+        }
+        core::CoreEvent::Terminating => ()  // no special handling for termination for now
+    }
 }
 
 fn mk_config() -> impl Config {
