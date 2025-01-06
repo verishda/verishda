@@ -1,4 +1,4 @@
-import { CheckBox , TextEdit, VerticalBox, HorizontalBox, Button, LineEdit, ProgressIndicator, StyleMetrics, Palette } from "std-widgets.slint";
+import { CheckBox , TextEdit, VerticalBox, HorizontalBox, Button, LineEdit, ProgressIndicator, StyleMetrics, Palette, GridBox } from "std-widgets.slint";
 
 import { SitePresenceView, SiteModel, PersonModel } from "mainview.slint";
 
@@ -7,6 +7,7 @@ enum MainWindowState {
     ShowingWelcomeView,
     ShowingSitePresenceView,
     ShowingWaitingForLoginView,
+    ShowingSettings,
 }
 
 export global AppUI {
@@ -18,7 +19,8 @@ export global AppUI {
     pure callback filter_set(string, bool);
     pure callback announcement_change_requested(string, PersonModel, int);
 
-    in property <MainWindowState> state: MainWindowState.ShowingWelcomeView;
+    in-out property <MainWindowState> state: MainWindowState.ShowingSettings;
+    in property <MainWindowState> settings_origin_state: MainWindowState.ShowingSettings;
     in-out property <[SiteModel]> sites;
     in-out property <int> selected_site_index;
     in property <[string]> site_names;
@@ -40,7 +42,8 @@ component FetchProviderMetaView {
 }
 component WelcomeView inherits VerticalBox {
 
-    vertical-stretch: 1;
+    vertical-stretch: 0;
+
 
     VerticalLayout {
         vertical-stretch: 1;
@@ -63,13 +66,69 @@ component WelcomeView inherits VerticalBox {
                 wrap: word-wrap;
             }
             
-            Button {
-                text: "Login / Create Account";
-                clicked => {
-                    AppUI.login-triggered();
+            HorizontalBox {
+                Button {
+                    text: "Login / Create Account";
+                    clicked => {
+                        AppUI.login-triggered();
+                    }
+                    horizontal-stretch: 1;
+                }
+                Button {
+                    colorize-icon: true;
+                    icon: @image-url("icons/gear.svg");
+                    horizontal-stretch: 0;
+                    clicked => {
+                        AppUI.settings_origin_state = AppUI.state;
+                        AppUI.state = MainWindowState.ShowingSettings;
+                    }
                 }
             }
+        }
+    }
+}
+
+component SettingsView {
+    
+    vertical-stretch: 0;
+    VerticalBox {
+        run-on-startup-checkbox := CheckBox {
+            text: "Run Verishda on Login";
+            
+        }
+
+        HorizontalBox {
+            Button {
+                text: "Logout of current session";
+                vertical-stretch: 0;
             }
+            vertical-stretch: 0;
+        }
+
+        
+        HorizontalBox {
+            vertical-stretch: 1;
+            GridBox {}
+        }
+        HorizontalBox {
+
+            Button {
+                horizontal-stretch: 0;
+                vertical-stretch: 0;
+                text: "Close";
+                clicked => {
+                    AppUI.state = AppUI.settings_origin_state;
+                }
+            }
+            Text {
+                font-size: 8px;
+                text: "0.0.0, 1.1.1970";
+                horizontal-stretch: 1;
+                vertical-stretch: 1;
+                vertical-alignment: TextVerticalAlignment.center;
+                horizontal-alignment: TextHorizontalAlignment.right;
+            }
+        }
     }
 }
 
@@ -101,6 +160,12 @@ export component MainWindow inherits Window {
             vertical-stretch: 1;
         }
     
+    if AppUI.state == MainWindowState.ShowingSettings:
+        settings_view := SettingsView {
+            width: root.width;
+            height: root.height;
+        }
+
     if AppUI.state == MainWindowState.ShowingWaitingForLoginView:
         waiting_for_login_view := WaitingForLoginView {}
         
