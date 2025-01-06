@@ -66,7 +66,7 @@ impl EnvConfig {
 
 const PUBLIC_ISSUER_URL: &str = "https://lemur-5.cloud-iam.com/auth/realms/verishda"; 
 const PUBLIC_CLIENT_ID: & str = "verishda-windows";
-const PUBLIC_API_BASE_URL: &str = "https://verishda.shuttleapp.rs";
+const PUBLIC_API_BASE_URL: &str = "https://verishda-lkej.shuttle.app";
 //const PUBLIC_API_BASE_URL: &str = "http://127.0.0.1:3000";
 
 pub fn default_config() -> impl Config {

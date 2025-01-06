@@ -1,7 +1,5 @@
 target/
 .spin/
 .env
-Secrets.dev.toml/target
 .shuttle*
-Secrets*.toml
 .idea
