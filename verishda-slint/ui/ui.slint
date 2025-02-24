@@ -1,6 +1,6 @@
 import { CheckBox , TextEdit, VerticalBox, HorizontalBox, Button, LineEdit, ProgressIndicator, StyleMetrics, Palette, GridBox } from "std-widgets.slint";
 
-import { SitePresenceView, SiteModel, PersonModel } from "mainview.slint";
+import { SitePresenceView, SiteModel, PersonModel, SettingsModel } from "mainview.slint";
 
 enum MainWindowState {
     Startup,
@@ -18,6 +18,7 @@ export global AppUI {
     pure callback refresh_requested();
     pure callback filter_set(string, bool);
     pure callback announcement_change_requested(string, PersonModel, int);
+    pure callback apply_settings_requested(SettingsModel);
 
     in-out property <MainWindowState> state: MainWindowState.ShowingSettings;
     in property <MainWindowState> settings_origin_state: MainWindowState.ShowingSettings;
@@ -25,6 +26,7 @@ export global AppUI {
     in-out property <int> selected_site_index;
     in property <[string]> site_names;
     in property <[PersonModel]> persons;
+    in property <SettingsModel> settings;
     in property <int> current_day_index;
 }
 
@@ -92,15 +94,21 @@ component SettingsView {
     
     vertical-stretch: 0;
     VerticalBox {
-        run-on-startup-checkbox := CheckBox {
-            text: "Run Verishda on Login";
-            
-        }
+        if AppUI.settings.run-on-startup-supported:
+            run-on-startup-checkbox := CheckBox {
+                text: "Run Verishda on Login";
+                checked: AppUI.settings.run-on-startup;
+                toggled => {
+                    AppUI.settings.run-on-startup = self.checked;
+                    AppUI.apply_settings_requested(AppUI.settings);
+                }
+            }
 
         HorizontalBox {
             Button {
-                text: "Logout of current session";
+                text: "Log out of current session";
                 vertical-stretch: 0;
+                enabled: AppUI.settings.is-logged-in;
             }
             vertical-stretch: 0;
         }
@@ -122,7 +130,7 @@ component SettingsView {
             }
             Text {
                 font-size: 8px;
-                text: "0.0.0, 1.1.1970";
+                text: AppUI.settings.software-version;
                 horizontal-stretch: 1;
                 vertical-stretch: 1;
                 vertical-alignment: TextVerticalAlignment.center;

@@ -3,7 +3,7 @@
 use clap::Parser;
 
 use chrono::{Datelike, Days};
-use core::verishda_dto::types::{Presence, PresenceAnnouncementKind, Site};
+use core::{verishda_dto::types::{Presence, PresenceAnnouncementKind, Site}, Settings};
 use std::{collections::HashMap, env};
 
 use core::{Announcement, AppCoreRef, CoreEvent, PersonFilter};
@@ -15,6 +15,9 @@ slint::include_modules!();
 mod core;
 
 use core::AppCore;
+
+const BUILD_DATE: &str = env!("BUILD_DATE");
+const CARGO_PKG_VERSION: &str = env!("CARGO_PKG_VERSION");
 
 #[derive(Parser, Debug)]
 #[command(version, about, long_about = None)]
@@ -53,8 +56,30 @@ fn main() {
     ui_main();
 }
 
+
+fn to_settings_model<C>(config: &C) -> SettingsModel 
+where C: Config
+{
+    SettingsModel {
+        is_logged_in: false,
+        run_on_startup: config.get_as_bool_or("RUN_ON_STARTUP", false),
+        run_on_startup_supported: config.get_as_bool_or("RUN_ON_STARTUP_SUPPORTED", false),
+        software_version: format!("{CARGO_PKG_VERSION} - {BUILD_DATE}").into(),
+        ..Default::default()
+    }
+}
+
+impl Into<Settings> for SettingsModel {
+    fn into(self) -> Settings {
+        Settings::new(self.run_on_startup)
+    }
+}
+
 fn ui_main() {
-    let app_core = AppCore::new(Box::new(mk_config()));
+    let inital_config = mk_config();
+
+    let settings_model: SettingsModel = to_settings_model(&inital_config);
+    let app_core = AppCore::new(Box::new(inital_config));
 
     let main_window = MainWindow::new().unwrap();
     let main_window_weak = main_window.as_weak();
@@ -72,6 +97,8 @@ fn ui_main() {
     app_ui.set_site_names(ModelRc::new(site_names));
 
     app_ui.set_persons(ModelRc::new(VecModel::default()));
+
+    app_ui.set_settings(settings_model);
 
     let main_window_weak = main_window.as_weak();
     let app_core_clone = app_core.clone();
@@ -108,6 +135,11 @@ fn ui_main() {
     app_ui.on_announcement_change_requested(move |site_id, person, day_index| {
         log::info!("Announcement change requested: {site_id}, {person:?}, {day_index}");
         announce(app_core_clone.clone(), site_id.to_string(), person);
+    });
+
+    let app_core_clone = app_core.clone();
+    app_ui.on_apply_settings_requested(move |settings_model|{
+        app_core_clone.apply_settings(settings_model.into())
     });
 
     let main_window_weak = main_window.as_weak();
@@ -175,10 +207,15 @@ fn process_event(app_ui: AppUI<'_>, event: CoreEvent) {
 }
 
 fn mk_config() -> impl Config {
-    CompositeConfig::from_configs(
+    let cfg = CompositeConfig::from_configs(
         Box::new(EnvConfig::from_env()), 
         Box::new(default_config())
-    )
+    );
+    let cfg = CompositeConfig::from_configs(
+        Box::new(core::startup::StartupConfig{}), 
+        Box::new(cfg)
+    );
+    cfg
 }
 
 

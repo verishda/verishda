@@ -13,7 +13,7 @@ identifier = "name.pachler.verishda"
 icon = ["ui/icons/logo.png"]
 
 [dependencies]
-slint = "1.8"
+slint = "1.9"
 anyhow = "1.0"
 tokio = { version = "1.36.0", features = ["full"] }
 openidconnect = "3.5.0"
@@ -35,6 +35,7 @@ webbrowser = "1.0.0"
 progenitor-client = {workspace=true}
 verishda-config = {path="../verishda-config"}
 hyper-util = { version = "0.1.9", features = ["client"] }
+windows-registry = "0.4.0"
 
 [target.'cfg(target_os = "macos")'.dependencies]
 objc2 = "0.5.2"
@@ -49,6 +50,7 @@ slint-build = "1.8"
 quote = "1.0"
 embed-manifest = "1.4.0"
 embed-resource = "2.4.2"
+chrono = { workspace=true }
 
 [target.'cfg(windows)'.dependencies]
 windows = {version="0.54.0", features = [ "Devices_Geolocation", "Devices_Geolocation_Geofencing", "Foundation", "Foundation_Collections", "Win32_UI_WindowsAndMessaging", "Win32_System_Console" ]}

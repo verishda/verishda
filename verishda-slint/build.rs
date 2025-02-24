@@ -1,3 +1,5 @@
+use std::fmt::Debug;
+
 use embed_manifest::{embed_manifest, new_manifest};
 use quote::quote;
 
@@ -9,6 +11,10 @@ fn main() {
     do_embed_manifest();
 
     do_embed_resources();
+
+    let build_date = chrono::Local::now();
+
+    println!("cargo:rustc-env=BUILD_DATE={}", build_date.format("%Y-%m-%d][%H:%M:%S"));
 
     verishda_dto::run_progenitor("../verishda.yaml", quote!(ClientInner), Some(quote!(ClientInner::post_hook)));
 }

@@ -16,6 +16,7 @@ use verishda_dto::types::{PresenceAnnouncement, PresenceAnnouncementKind, Presen
 use crate::core::location::Location;
 
 mod location;
+pub mod startup;
 pub mod verishda_dto;
 
 #[derive(Default, Clone, Debug)]
@@ -33,12 +34,38 @@ struct Credentials {
     expires_at: Instant,
 }
 
-#[derive(Default)]
+#[derive(Default, Debug)]
 pub struct PersonFilter {
     pub favorites_only: bool,
     pub term: Option<String>,
 }
 
+#[derive(Default, Debug)]
+pub struct Settings {
+    run_on_startup: bool,
+}
+
+impl Settings {
+    pub fn new(run_on_startup: bool) -> Self {
+        Self {
+            run_on_startup
+        }
+    }
+
+    fn apply_to(&self, config: &mut Box<dyn Config>) {
+        if let Err(e) = config.set_as_bool("RUN_ON_STARTUP", self.run_on_startup) {
+            log::error!("cannot write config option {e}");
+        }
+    }
+}
+
+impl From<&Box<dyn Config>> for Settings{
+    fn from(config: &Box<dyn Config>) -> Self {
+        Self {
+            run_on_startup: config.get_as_bool_or("RUN_ON_STARTUP", true)
+        }
+    }
+}
 
 pub struct AppCore {
     config: Box<dyn Config>,
@@ -83,6 +110,7 @@ enum LoginPipeMessage {
     },
 }
 
+#[derive(Debug)]
 enum AppCoreCommand {
     StartLogin,
     CancelCurrentOperation,
@@ -103,6 +131,7 @@ enum AppCoreCommand {
         site_id: String,
     },
     SetPersonFilter(PersonFilter),
+    ApplySettings(Settings),
     Quit,
 }
 
@@ -231,6 +260,9 @@ impl AppCore {
             SetSite{site_id} => {
                 app_core.set_site_impl(&site_id).await;
             }
+            ApplySettings(settings) => {
+                app_core.apply_settings_impl(settings).await;
+            }
         }
 
         false
@@ -239,41 +271,54 @@ impl AppCore {
 
 impl AppCoreRef {
 
+    fn send_cmd(&self, cmd: AppCoreCommand) {
+        let cmd_str = format!("{cmd:?}");
+        if let Err(e) = self.command_tx.blocking_send(cmd) {
+            log::error!("failed to send command {cmd_str}");
+        } else {
+            log::trace!("command {cmd_str} sent");
+        }
+    }
+
     pub fn start_login(&self) {
-        _ = self.command_tx.blocking_send(AppCoreCommand::StartLogin);
+        self.send_cmd(AppCoreCommand::StartLogin);
     }
 
     pub fn set_site(&self, site_id: &str) {
         let site_id = site_id.to_owned();
-        _ = self.command_tx.blocking_send(AppCoreCommand::SetSite{site_id});
+        self.send_cmd(AppCoreCommand::SetSite{site_id});
     }
 
     pub fn filter(&self, filter: PersonFilter) {
-        _ = self.command_tx.blocking_send(AppCoreCommand::SetPersonFilter(filter));
+        self.send_cmd(AppCoreCommand::SetPersonFilter(filter));
     }
 
     pub fn refresh(&self) {
-        _ = self.command_tx.blocking_send(AppCoreCommand::RefreshPrecences);
+        self.send_cmd(AppCoreCommand::RefreshPrecences);
     }
 
     pub fn change_favorite(&self, user_id: &str, favorite: bool) {
         let user_id = user_id.to_owned();
-        _ = self.command_tx.blocking_send(AppCoreCommand::ChangeFavorite{user_id, favorite});
+        self.send_cmd(AppCoreCommand::ChangeFavorite{user_id, favorite});
     }
 
     pub fn announce(&self, site_id: String, announcements: Vec<Announcement>) {
-        _ = self.command_tx.blocking_send(AppCoreCommand::PublishAnnouncements{
+        self.send_cmd(AppCoreCommand::PublishAnnouncements{
             site_id, 
             announcements: announcements.clone()
         });
     }
 
+    pub fn apply_settings(&self, settings: Settings) {
+        self.send_cmd(AppCoreCommand::ApplySettings(settings));
+    }
+
     pub fn quit(&self) {
-       self.command_tx.blocking_send(AppCoreCommand::Quit).unwrap();
+        self.send_cmd(AppCoreCommand::Quit);
     }
 
     pub fn cancel_login(&self) {
-        self.command_tx.blocking_send(AppCoreCommand::CancelCurrentOperation).unwrap();
+        self.send_cmd(AppCoreCommand::CancelCurrentOperation);
     }
 
     pub fn on_core_event<F>(&self, f: F)
@@ -304,6 +349,10 @@ impl AppCore {
         if changed {
             self.refresh_presences().await;
         }
+    }
+
+    async fn apply_settings_impl(&mut self, settings: Settings) {
+        settings.apply_to(&mut (self.config));
     }
 
     async fn run_token_refresh(&mut self) -> Result<()> {
@@ -453,6 +502,10 @@ impl AppCore {
     async fn set_filter(&mut self, filter: PersonFilter) {
         self.filter = filter;
         self.refresh_presences().await;
+    }
+
+    async fn apply_settings(&mut self, settings: Settings) {
+        settings.apply_to(&mut self.config);
     }
 
     async fn publish_favorite_change(&mut self, user_id: String, favorite: bool) {

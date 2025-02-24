@@ -1,13 +1,52 @@
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use anyhow::{Result, anyhow};
 use dotenv::*;
 
 
+/// The `Config` trait allows access to process-wide configuration.
+/// Configuration items can be pulled from a mix of various sources:
+/// * `.env` files
+/// * environment variables
+/// * special system specific configuration stores like the Windows
+///   registry
+/// * custom configuration stores
+/// 
+/// Configuration stored here works like a (possibly typed) key/value
+/// store. A `Config` implementation must declare which configuration
+/// properties is supports. See [Config::supported_keys]
+/// 
 pub trait Config: Send + Sync{
+    /// return specific keys names that this `Config` implementation 
+    /// supports. Note that this is in addition to what [Config::supports_any_key]
+    /// provides. 
+    /// The default implementation returns the empty set.
+    fn supported_settable_keys(&self) -> HashSet<&str>{
+        HashSet::new()
+    }
+    /// return whether this `Config` supports reading and writing any
+    /// arbitrary key. 
+    /// The default implementation returns always `false`.
+    fn supports_setting_any_key(&self) -> bool{
+        false
+    }
+
     fn get(&self, key: &str) -> Result<String>;
+    fn set(&mut self, _key: &str, _value: &str) -> Result<()> {
+        panic!("set operation not implemented, check if setting config properties is supported via supported_settable_keys() and supports_setting_any_key() methods")
+    }
+
+    /// Create polymorphic copy of concrete `Config` trait object
     fn clone_box_dyn(&self) -> Box<dyn Config>;
+
+    fn get_as_bool_or(&self, key: &str, default: bool) -> bool {
+        self.get(key).ok().map(|s|s=="true").unwrap_or(default)
+    }
+    fn set_as_bool(&mut self, key: &str, value: bool) -> Result<()> {
+        self.set(key, &value.to_string())
+    }
+
 }
 
 impl Clone for Box<dyn Config> {
@@ -26,13 +65,50 @@ impl CompositeConfig {
     pub fn from_configs(main: Box<dyn Config>, fallback: Box<dyn Config>) -> CompositeConfig {
         CompositeConfig{ main, fallback }
     }
+
+    fn is_settable(config: &Box<dyn Config>, key: &str) -> bool {
+        config.supports_setting_any_key()
+        || config.supported_settable_keys().contains(key)
+    }
+
+    fn settable_config(&mut self, key: &str) -> Option<&mut Box<dyn Config>> {
+        if Self::is_settable(&self.main, key) {
+            Some(&mut self.main)
+        } else if Self::is_settable(&self.fallback, key) {
+            Some(&mut self.fallback)
+        } else {
+            None
+        }
+    }
 }
 
 impl Config for CompositeConfig {
+
+    fn supported_settable_keys(&self) -> HashSet<&str> {
+        let hs = self.main.supported_settable_keys();
+        hs.union(&self.fallback.supported_settable_keys())
+        .map(|s|*s)
+        .collect()
+    }
+
+    fn supports_setting_any_key(&self) -> bool {
+        return self.main.supports_setting_any_key()
+        ||  self.fallback.supports_setting_any_key()
+    }
+
     fn get(&self, key: &str) -> Result<String> {
         self.main
         .get(key)
         .or_else(|_e| self.fallback.get(key))
+    }
+
+
+    fn set(&mut self, key: &str, value: &str) -> Result<()>{
+        if let Some(settable_config) = self.settable_config(key) {
+            settable_config.set(key, value)
+        } else {
+            Err(anyhow!("key '{key}' can not be set in config"))
+        }
     }
 
     fn clone_box_dyn(&self) -> Box<dyn Config> {

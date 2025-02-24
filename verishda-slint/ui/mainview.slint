@@ -6,6 +6,14 @@ export enum AnnouncementModel {
     RecurringPresenceAnnounced,
 }
 
+
+export struct SettingsModel {
+    is_logged_in: bool,
+    run_on_startup: bool,
+    run_on_startup_supported: bool,
+    software_version: string,
+}
+
 export struct PersonModel {
     name: string,
     user_id: string,
