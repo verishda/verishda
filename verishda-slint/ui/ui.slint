@@ -1,6 +1,6 @@
 import { CheckBox , TextEdit, VerticalBox, HorizontalBox, Button, LineEdit, ProgressIndicator, StyleMetrics, Palette, GridBox } from "std-widgets.slint";
 
-import { SitePresenceView, SiteModel, PersonModel, SettingsModel } from "mainview.slint";
+import { SitePresenceView, SiteModel, PersonModel, SettingsModel, SettingsButton } from "mainview.slint";
 
 enum MainWindowState {
     Startup,
@@ -76,13 +76,10 @@ component WelcomeView inherits VerticalBox {
                     }
                     horizontal-stretch: 1;
                 }
-                Button {
-                    colorize-icon: true;
-                    icon: @image-url("icons/gear.svg");
-                    horizontal-stretch: 0;
+                SettingsButton { 
                     clicked => {
                         AppUI.settings_origin_state = AppUI.state;
-                        AppUI.state = MainWindowState.ShowingSettings;
+                        AppUI.state = MainWindowState.ShowingSettings;        
                     }
                 }
             }
@@ -198,6 +195,10 @@ export component MainWindow inherits Window {
             }
             filter_set(term, favorites-only) => {
                 AppUI.filter_set(term, favorites-only);
+            }
+            show_settings_requested() => {
+                AppUI.settings_origin_state = AppUI.state;
+                AppUI.state = MainWindowState.ShowingSettings;        
             }
             current_day_index: AppUI.current_day_index;
         }

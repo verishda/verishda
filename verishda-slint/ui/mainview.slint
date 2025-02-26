@@ -66,9 +66,14 @@ component FavStar inherits Image {
         not_favorite when !touch.has-hover && !self.is_favorite: {
         }
     ]
-
-    
 }
+
+export component SettingsButton inherits Button {
+    colorize-icon: true;
+    icon: @image-url("icons/gear.svg");
+    horizontal-stretch: 0;
+}
+
 component PresenceCell inherits VerticalLayout {
     width: 30px;
 }
@@ -230,6 +235,7 @@ export component SitePresenceView inherits Window {
     callback favorite_change_requested(string, bool);
     callback refresh_requested();
     callback announcement_change_requested(string, PersonModel, int);
+    callback show_settings_requested();
     callback filter_set(string, bool);
 
     out property <string> current_site_id <=> site_combo.current_site_id;
@@ -262,6 +268,12 @@ export component SitePresenceView inherits Window {
                 colorize-icon: true;
                 clicked => {
                     root.refresh_requested();
+                }
+            }
+
+            SettingsButton {
+                clicked => {
+                    root.show_settings_requested();
                 }
             }
             search_button := Button {                
