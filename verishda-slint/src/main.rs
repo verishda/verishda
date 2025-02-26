@@ -61,7 +61,6 @@ fn to_settings_model<C>(config: &C) -> SettingsModel
 where C: Config
 {
     SettingsModel {
-        is_logged_in: false,
         run_on_startup: config.get_as_bool_or("RUN_ON_STARTUP", false),
         run_on_startup_supported: config.get_as_bool_or("RUN_ON_STARTUP_SUPPORTED", false),
         software_version: format!("{CARGO_PKG_VERSION} - {BUILD_DATE}").into(),
@@ -87,6 +86,11 @@ fn ui_main() {
     let app_ui = main_window.global::<AppUI>();
     app_ui.on_login_triggered(move || {
         start_login(&app_core_clone, main_window_weak.clone());
+    });
+    let main_window_weak = main_window.as_weak();
+    let app_core_clone = app_core.clone();
+    app_ui.on_logout_triggered(move || {
+        start_logout(&app_core_clone, main_window_weak.clone());
     });
 
     // wire site_names to sites property, mapping names. This is so that
@@ -221,6 +225,10 @@ fn mk_config() -> impl Config {
 
 fn start_login(app_core: &AppCoreRef, _main_window_weak: Weak<MainWindow>) {
     app_core.start_login();
+}
+
+fn start_logout(app_core: &AppCoreRef, _main_window_weak: Weak<MainWindow>) {
+    app_core.start_logout();
 }
 
 fn cancel_login(app_core: AppCoreRef, main_window: Weak<MainWindow>) {

@@ -284,6 +284,10 @@ impl AppCoreRef {
         self.send_cmd(AppCoreCommand::StartLogin);
     }
 
+    pub fn start_logout(&self) {
+        self.send_cmd(AppCoreCommand::Logout);
+    }
+
     pub fn set_site(&self, site_id: &str) {
         let site_id = site_id.to_owned();
         self.send_cmd(AppCoreCommand::SetSite{site_id});

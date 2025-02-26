@@ -13,6 +13,7 @@ enum MainWindowState {
 export global AppUI {
     pure callback login_triggered();
     pure callback login_cancelled();
+    pure callback logout_triggered();
     pure callback site_selected(string);
     pure callback change_favorite_requested(string, bool);
     pure callback refresh_requested();
@@ -105,7 +106,11 @@ component SettingsView {
             Button {
                 text: "Log out of current session";
                 vertical-stretch: 0;
-                enabled: AppUI.settings.is-logged-in;
+                enabled: (AppUI.settings_origin_state == MainWindowState.ShowingSitePresenceView);
+                clicked => {
+                    AppUI.state = AppUI.settings_origin_state;
+                    AppUI.logout_triggered();
+                }
             }
             vertical-stretch: 0;
         }
