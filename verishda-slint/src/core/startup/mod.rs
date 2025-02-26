@@ -2,8 +2,10 @@ use anyhow::*;
 use verishda_config::Config;
 use std::{collections::HashSet, str::FromStr};
 
-#[cfg(windows)]
+#[cfg(target_os="windows")]
 mod windows;
+#[cfg(target_os="macos")]
+mod macos;
 
 pub trait StartupBehaviour {
     fn run_on_startup_supported() -> bool;
@@ -14,8 +16,10 @@ pub trait StartupBehaviour {
 
 }
 
-#[cfg(windows)]
+#[cfg(target_os="windows")]
 type PlatformStartupBehaviour = windows::WindowsStartupBehaviour;
+#[cfg(target_os="macos")]
+type PlatformStartupBehaviour = macos::MacOSStartupBehaviour;
 
 #[derive(Clone)]
 pub struct StartupConfig;
